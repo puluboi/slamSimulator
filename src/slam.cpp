@@ -9,7 +9,7 @@ SLAM::SLAM() {
     observations = Eigen::VectorXd::Zero(0);
     covariance = Eigen::MatrixXd::Identity(robotStateSize, robotStateSize);
     numLandmarks = 0;
-}
+}   
 
 void SLAM::initializeState(sf::Vector2f initialPosition, float initialDirection) {
     // convert sfml types to doubles and call the main initialization
