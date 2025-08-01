@@ -8,7 +8,7 @@ Sensors::Sensors()
       noiseDistribution(0.0f, 0.f), 
       LiDARnoiseDistribution(0.0f, 0.1f), // lidar noise: ~1.5cm std dev
       accelNoiseDistribution(0.0f, 0.f), // accelerometer noise: ~0.01 m/s² std dev
-      gyroNoiseDistribution(0.0f, 0.1f), // gyroscope noise: ~0.0001 rad/s std dev
+      gyroNoiseDistribution(0.0f, 0.0f), // gyroscope noise: ~0.0001 rad/s std dev
       gpsNoiseDistribution(0.0f, 3.0f) // gps noise: ~3m std dev (typical consumer gps)
 {
     lineTracers.resize(6); // 10 vertices for 5 lines

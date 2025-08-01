@@ -22,7 +22,6 @@ private:
     int robotStateSize = 6;  // [x, y, theta, vx, vy, omega] - position, orientation, velocities
     int landmarkStateSize = 2; // [x, y] per landmark
     int numLandmarks = 0;
-    
     // store last control input for jacobian calculations
     Eigen::Vector3d lastControlInput; // [ax, ay, alpha] - accelerations
 
@@ -49,8 +48,9 @@ public:
     
     // control input processing for motion model updates
     void updateControlInput(bool keys[4], float currentSpeed, float deltaTime, float currentDirection);
-    void updateControlInputWithAcceleration(const std::vector<AccelerometerData>& accelData, 
-                                           const std::vector<GyroscopeData>& gyroData);
+    void updateControlInputWithAcceleration(
+        const std::vector<AccelerometerData>& accelData,
+        const std::vector<GyroscopeData>& gyroData);
     Eigen::Vector3d getLastControlInput() const { return lastControlInput; }
     
     // accessor methods for state estimation components

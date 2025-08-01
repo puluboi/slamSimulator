@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <vector>
+#include <map>
 #include "sensors.hpp"
 #include "odometry.hpp"
 #include "movement.hpp"
@@ -74,6 +75,9 @@ private:
     Pathfinding pathfinder;
 
     SLAM slam;
+    
+    // landmark id mapping for slam updates
+    std::map<int, int> landmarkIdToSlamIndex; // maps landmark id to slam state index
 
     float sensorUpdateTimer = 0.0f;
     float stateUpdateTimer = 0.0f;

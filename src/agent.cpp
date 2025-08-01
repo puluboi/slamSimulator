@@ -1,4 +1,5 @@
 #include "agent.hpp"
+#include <cmath>
 
 Agent::Agent() : pathfinder(Pathfinding(800, 600, 20)) { // initialize pathfinder with world size
     gameTime = 0.0f;
@@ -31,13 +32,68 @@ void Agent::updateState(float intervalTime){
     // check if new landmarks have been detected
     if (detectedLandmarks.size() > previousLandmarkCount) {
         for (size_t i = previousLandmarkCount; i < detectedLandmarks.size(); ++i) {
+            int landmarkId = detectedLandmarks[i].getId();
+            int slamIndex = slam.getNumLandmarks(); // next available slam index
+            
             slam.addLandmarkToState(detectedLandmarks[i].getObservedPos());
+            landmarkIdToSlamIndex[landmarkId] = slamIndex; // store mapping
+            
+            std::cout << "mapped landmark id " << landmarkId << " to slam index " << slamIndex << std::endl;
         }
         previousLandmarkCount = detectedLandmarks.size();
     }
     slam.updateControlInputWithAcceleration(sensors.getAccelerometerData(), sensors.getGyroscopeData());
     slam.ekfPredict(intervalTime);
-
+    
+    // convert detected landmark cartesian coordinates to range-bearing observations
+    // use proper landmark id mapping for slam updates
+    std::vector<std::pair<Eigen::VectorXd, int>> landmarkObservationPairs;
+    sf::Vector2f robotPos = slam.getRobotPosition();
+    float robotDir = slam.getRobotDirection() * M_PI / 180.0f; // convert degrees to radians
+    
+    for (const auto& landmark : detectedLandmarks) {
+        // calculate relative position from robot to landmark
+        sf::Vector2f landmarkPos = landmark.getObservedPos();
+        float dx = landmarkPos.x - robotPos.x;
+        float dy = landmarkPos.y - robotPos.y;
+        
+        // compute range and bearing in robot frame
+        float range = std::sqrt(dx * dx + dy * dy);
+        float absoluteBearing = std::atan2(dy, dx);
+        float relativeBearing = absoluteBearing - robotDir;
+        
+        // normalize bearing to [-π, π] for consistent angular representation
+        while (relativeBearing > M_PI) relativeBearing -= 2.0 * M_PI;
+        while (relativeBearing < -M_PI) relativeBearing += 2.0 * M_PI;
+        
+        // create range-bearing observation vector
+        Eigen::VectorXd observation(2);
+        observation(0) = range;
+        observation(1) = relativeBearing;
+        
+        // find the slam index for this landmark id using proper mapping
+        int landmarkId = landmark.getId();
+        auto it = landmarkIdToSlamIndex.find(landmarkId);
+        if (it != landmarkIdToSlamIndex.end()) {
+            int slamLandmarkIndex = it->second;
+            if (slamLandmarkIndex >= 0 && slamLandmarkIndex < slam.getNumLandmarks()) {
+                landmarkObservationPairs.push_back(std::make_pair(observation, slamLandmarkIndex));
+            }
+        } else {
+            std::cout << "warning: landmark id " << landmarkId << " not found in slam mapping" << std::endl;
+        }
+    }
+    
+    // apply updates only for detected landmarks using their proper ids
+    for (const auto& obsPair : landmarkObservationPairs) {
+        //slam.ekfUpdate(obsPair.first, obsPair.second);
+    }
+    
+    // debug landmark observations
+    std::cout << "DEBUG: " << detectedLandmarks.size() << " landmarks detected, " 
+              << landmarkObservationPairs.size() << " valid observations, " 
+              << slam.getNumLandmarks() << " landmarks in slam state" << std::endl;
+    
     std::cout<<"SLAM Predict diagnostics:" << std::endl;
     std::cout<<"  GT: Pos[" << movement.getPosition().x << ", " << movement.getPosition().y 
              << "] Dir=" << movement.getDirection() << "°" << std::endl;

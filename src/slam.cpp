@@ -163,22 +163,22 @@ void SLAM::updateControlInputWithAcceleration(const std::vector<AccelerometerDat
         ay = latestAccel.y;  // linear acceleration in y direction
     }
     
-    // get latest gyroscope reading for angular acceleration
+    // get latest gyroscope reading for angular velocity (not acceleration)
     if (!gyroData.empty()) {
         const auto& latestGyro = gyroData.back();
-        // for angular acceleration, we differentiate angular velocity
-        // for now, use the angular velocity directly as a proxy
-        static float previousOmega = 0.0f;
-        float currentOmega = latestGyro.z;
-        alpha = (currentOmega - previousOmega)*180/M_PI; // angular acceleration in rad/s²
-        previousOmega = currentOmega;
+        // use angular velocity directly to match odometry implementation
+        alpha = latestGyro.z; // rad/s (angular velocity, not acceleration)
     }
     
     // store acceleration as control input for motion model
     lastControlInput = Eigen::Vector3d(ax, ay, alpha);
     
     // debug output for acceleration values
-    //std::cout << "acceleration control: [ax=" << ax << ", ay=" << ay << ", alpha=" << alpha << "]" << std::endl;
+    static int debugCounter = 0;
+    if (++debugCounter % 100 == 0) {
+        std::cout << "control input debug: [ax=" << ax << ", ay=" << ay 
+                  << ", alpha=" << alpha << " rad/s²]" << std::endl;
+    }
 }
 
 Eigen::Vector3d SLAM::getRobotPose() const {
@@ -290,14 +290,14 @@ Eigen::VectorXd SLAM::stateTransitionModel(const Eigen::VectorXd& currentState,
     Eigen::VectorXd nextState = currentState;
     
     if (currentState.size() >= robotStateSize) {
-        double x = currentState(0);
-        double y = currentState(1);
-        double theta = currentState(2);
-        double vx = currentState(3);     // linear velocity
-        double vy = currentState(4);     // linear velocity
-        double omega = currentState(5);  // angular velocity
+        float x = currentState(0);
+        float y = currentState(1);
+        float theta = currentState(2);
+        float vx = currentState(3);     // linear velocity
+        float vy = currentState(4);     // linear velocity
+        float omega = currentState(5);  // angular velocity
         
-        double dt = deltaTime;
+        float dt = deltaTime;
         
         // Use velocity-based model to match odometry
         // This should match exactly how the robot actually moves
@@ -305,10 +305,10 @@ Eigen::VectorXd SLAM::stateTransitionModel(const Eigen::VectorXd& currentState,
         nextState(1) = y + vy * dt;  // position y  
         nextState(2) = theta + omega * dt;  // orientation
         
-        // Velocity updates from control input (accelerations)
-        nextState(3) = vx + controlInput(0) * dt;  // velocity x
-        nextState(4) = vy + controlInput(1) * dt;  // velocity y
-        nextState(5) = omega + controlInput(2) * dt;  // angular velocity
+        // Velocity updates from control input (accelerations for linear, velocity for angular)
+        nextState(3) = vx + controlInput(0) * dt;  // velocity x from acceleration
+        nextState(4) = vy + controlInput(1) * dt;  // velocity y from acceleration
+        nextState(5) = controlInput(2);  // angular velocity directly (not integrated)
         
         // Normalize angle
         while (nextState(2) > M_PI) nextState(2) -= 2.0 * M_PI;
@@ -603,6 +603,23 @@ void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
     // Step 1: Calculate innovation
     Eigen::VectorXd innovation = calculateInnovation(observation, landmarkIndex);
     
+    // debug: print innovation values
+    std::cout << "DEBUG EKF Update - Landmark " << landmarkIndex 
+              << ": Innovation=[" << innovation(0) << ", " << innovation(1) 
+              << "] (range, bearing in rad)" << std::endl;
+    
+    // innovation gating - reject observations with excessive errors to prevent filter corruption
+    double rangeInnovationThreshold = 190.5;  // 50cm range threshold
+    double bearingInnovationThreshold = 100.1; // ~5.7 degree bearing threshold
+    
+    if (std::abs(innovation(0)) > rangeInnovationThreshold || 
+        std::abs(innovation(1)) > bearingInnovationThreshold) {
+        std::cout << "DEBUG: REJECTING Landmark " << landmarkIndex 
+                  << " - innovation too large (range=" << innovation(0) 
+                  << ", bearing=" << innovation(1) << ")" << std::endl;
+        return; // skip this update
+    }
+    
     // Step 2: Calculate observation Jacobian
     Eigen::MatrixXd H = calculateJacobian(JacobianType::OBSERVATION, state, Eigen::VectorXd(), landmarkIndex);
     
@@ -631,10 +648,30 @@ void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
 }
 
 void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations) {
-    // Update with multiple observations sequentially
+    // validate input observations match expected range-bearing format
+    for (const auto& obs : observations) {
+        if (obs.size() != 2) {
+            std::cerr << "invalid observation format in ekfUpdateMultiple. expected range-bearing [2], got " 
+                      << obs.size() << std::endl;
+            return;
+        }
+    }
+    
+    // process observations sequentially to maintain filter stability
+    // limit updates to available landmarks to prevent index overflow
     size_t maxUpdates = std::min(static_cast<size_t>(numLandmarks), observations.size());
     
     for (size_t i = 0; i < maxUpdates; i++) {
-        ekfUpdate(observations[i], static_cast<int>(i));
+        // normalize bearing angle before update to ensure consistent angular representation
+        Eigen::VectorXd normalizedObs = observations[i];
+        double bearing = normalizedObs(1);
+        
+        // constrain bearing to [-π, π] range for numerical stability
+        while (bearing > M_PI) bearing -= 2.0 * M_PI;
+        while (bearing < -M_PI) bearing += 2.0 * M_PI;
+        normalizedObs(1) = bearing;
+        
+        // apply ekf update step for this landmark observation
+        ekfUpdate(normalizedObs, static_cast<int>(i));
     }
 }
