@@ -8,19 +8,21 @@
 #include "renderer.hpp"
 #include "landmark.hpp"
 #include "pathfinding.hpp"
-#include "ekf.hpp"
+#include "slam.hpp"
+#include "iostream"
 
 class Agent {
 public:
     Agent();
     void init(sf::Vector2f startPosition);
-    void update(float deltaTime, bool keys[4], sf::Vector2u windowSize, 
+    void updateState(float intervalTime);
+    void update(float deltaTime, bool keys[4], sf::Vector2u windowSize,
                 const std::vector<Landmark>& landmarks = {});
     void render(sf::RenderWindow& window);
     void renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosition, sf::Vector2f minimapSize, sf::Vector2u worldSize,
                        const std::vector<Landmark>& landmarks = {});
     
-    // Exploration control
+    // exploration control methods
     void toggleExplorationMode() { explorationMode = !explorationMode; }
     bool isExplorationMode() const { return explorationMode; }
     void setExplorationMode(bool enabled) { explorationMode = enabled; }
@@ -29,7 +31,7 @@ public:
         sensors.setLandmarks(newLandmarks);
     }
     
-    // Getters
+    // getter methods for agent state and sensor data
     sf::Vector2f getPosition() const { return movement.getPosition(); }
     sf::RectangleShape getShape() const { return movement.getShape(); }
     const std::vector<sf::Vertex>& getLineTracers() const { return sensors.getLineTracers(); }
@@ -42,22 +44,22 @@ public:
     const std::vector<Landmark> getDetectedLandmarks() const { return sensors.getdetectedLandmarks(); }
     const Sensors& getSensors() const { return sensors; }
     
-    // Get total average error across all detected landmarks
+    // get total average error across all detected landmarks
     float getTotalAverageError() const { return sensors.getTotalAverageError(); }
     
-    // Get average error across all detected landmarks
+    // get average error across all detected landmarks
     float getAverageDetectedLandmarkError() const { return sensors.calculateAverageDetectedLandmarkError(); }
     
-    // GPS control
+    // gps control methods
     void setGPSEnabled(bool enabled) { sensors.setGPSEnabled(enabled); }
     bool isGPSEnabled() const { return sensors.isGPSEnabled(); }
     
-    // Pathfinding and exploration getters
+    // pathfinding and exploration getter methods
     const std::vector<sf::Vector2f>& getCurrentPath() const { return currentPath; }
     sf::Vector2f getCurrentTarget() const { return currentTarget; }
     size_t getCurrentPathIndex() const { return currentPathIndex; }
     
-    // Agent's internal map access (for honest SLAM)
+    // agent's internal map access for honest slam implementation
     const std::vector<Landmark>& getAgentKnownLandmarks() const { return agentKnownLandmarks; }
     const std::map<std::pair<int, int>, bool>& getKnownOccupancyGrid() const { return knownOccupancyGrid; }
     const std::map<std::pair<int, int>, bool>& getExploredGrid() const { return exploredGrid; }
@@ -65,35 +67,38 @@ public:
    
 
 private:
-    // Component objects
+    // component objects for agent functionality
     Sensors sensors;
     Odometry odometry;
     Movement movement;
     Pathfinding pathfinder;
 
-    // EKF components
+    SLAM slam;
+
+    float sensorUpdateTimer = 0.0f;
+    float stateUpdateTimer = 0.0f;
     
 
-    // Exploration state
+    // exploration state variables
     bool explorationMode;
     std::vector<sf::Vector2f> currentPath;
     size_t currentPathIndex;
     sf::Vector2f currentTarget;
     float pathUpdateTimer;
     
-    // Agent's internal SLAM map (what it thinks the world looks like)
+    // agent's internal slam map representation
     std::map<std::pair<int, int>, bool> knownOccupancyGrid;  // true = occupied, false = free
     std::map<std::pair<int, int>, bool> exploredGrid;        // true = explored, false = unknown
-    std::vector<Landmark> agentKnownLandmarks;               // Only landmarks the agent has seen
-    sf::Vector2f mapOrigin;                                  // Agent's coordinate system origin
+    std::vector<Landmark> agentKnownLandmarks;               // only landmarks the agent has seen
+    sf::Vector2f mapOrigin;                                  // agent's coordinate system origin
     const int gridCellSize = 20;
     
-    // Helper methods for honest SLAM
+    // helper methods for honest slam implementation
     void updateAgentMap();
     sf::Vector2f findNearestUnexploredArea();
     void initializeAgentMap(sf::Vector2f startPosition);
     
-    // State tracking
+    // state tracking variables
     float gameTime;
     float tracerLength;
     sf::Vector2f previousPosition;

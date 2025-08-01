@@ -81,7 +81,3 @@ void LandmarkDetector::analyzeShapeProperties(Landmark& landmark, const std::vec
 void LandmarkDetector::updateNavigationProperties(Landmark& landmark) {
     // Simplified implementation
 }
-
-const std::vector<Landmark>& LandmarkDetector::getLandmarks() const {
-    return landmarks;
-}

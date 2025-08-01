@@ -8,15 +8,15 @@ Movement::Movement() {
     deacceleration = 0.1f;
     currentSpeed = 0.0f;
     currentAcceleration = 0.0f;
-    direction = 0.0f;        // Facing right initially
-    targetDirection = 0.0f;  // Start with same target
+    direction = 0.0f;        // facing right initially
+    targetDirection = 0.0f;  // start with same target
     rotationSpeed = 90.0f;   // 90 degrees per second
 }
 
 void Movement::init(sf::Vector2f startPosition) {
     position = startPosition;
     
-    // Setup agent shape
+    // setup agent shape
     shape.setSize(sf::Vector2f(10.0f, 10.0f));
     shape.setFillColor(sf::Color::Blue);
     shape.setPosition(position);
@@ -24,27 +24,27 @@ void Movement::init(sf::Vector2f startPosition) {
 
 void Movement::update(float deltaTime, bool keys[4], sf::Vector2u windowSize, 
                      const std::vector<Landmark>& landmarks) {
-    // Store current position for collision rollback
+    // store current position for collision rollback
     sf::Vector2f oldPosition = position;
     
-    // Update movement and rotation
+    // update movement and rotation
     updateMovement(deltaTime, keys, windowSize);
     updateRotation(deltaTime);
     
-    // Check for collisions with landmarks
+    // check for collisions with landmarks
     if (checkCollisionWithLandmarks(position, landmarks)) {
-        // Collision detected, revert to old position
+        // collision detected, revert to old position
         position = oldPosition;
     }
     
-    // Update agent shape position
+    // update agent shape position
     shape.setPosition(position);
 }
 
 void Movement::updateMovement(float deltaTime, bool keys[4], sf::Vector2u windowSize) {
     sf::Vector2f addedMov(0, 0);
-    // Handle movement input
-    // If no keyboard input, the robot deaccelerates abruptly
+    // handle movement input
+    // if no keyboard input, the robot deaccelerates abruptly
     if (!keys[0] && !keys[1] && !keys[2] && !keys[3]) {
         currentAcceleration = -deacceleration;
         currentSpeed = std::max(0.0f, currentSpeed+currentAcceleration);
@@ -56,31 +56,31 @@ void Movement::updateMovement(float deltaTime, bool keys[4], sf::Vector2u window
         currentSpeed = std::min(currentSpeed + currentAcceleration * deltaTime, speed); // cap the speed
         
     }
-    if (keys[0]) { // W key - move up
+    if (keys[0]) { // w key - move up
         addedMov.y = -currentSpeed * deltaTime;
     }
-    if (keys[1]) { // A key - move left
+    if (keys[1]) { // a key - move left
         addedMov.x = -currentSpeed * deltaTime;
     }
-    if (keys[2]) { // S key - move down
+    if (keys[2]) { // s key - move down
         addedMov.y = currentSpeed * deltaTime;
     }
-    if (keys[3]) { // D key - move right
+    if (keys[3]) { // d key - move right
         addedMov.x = currentSpeed * deltaTime;
     }
-    // If no keys are pressed, drift in the last controlled direction
+    // if no keys are pressed, drift in the last controlled direction
     if (!keys[0] && !keys[1] && !keys[2] && !keys[3] && currentSpeed > 0.0f) {
         addedMov.x += std::cos(direction * 3.14159f / 180.0f) * currentSpeed * deltaTime;
         addedMov.y += std::sin(direction * 3.14159f / 180.0f) * currentSpeed * deltaTime;
     }
     position += addedMov;
     
-    // Only update target direction if we're actually moving
+    // only update target direction if we're actually moving
     if (addedMov.x != 0.0f || addedMov.y != 0.0f) {
-        targetDirection = std::atan2(addedMov.y, addedMov.x) * 180.0f / 3.14159f; // Convert to degrees
+        targetDirection = std::atan2(addedMov.y, addedMov.x) * 180.0f / 3.14159f; // convert to degrees
     }
     
-    // Keep agent within window bounds
+    // keep agent within window bounds
     if (position.x < 0) position.x = 0;
     if (position.y < 0) position.y = 0;
     if (position.x > windowSize.x - shape.getSize().x) 
@@ -90,21 +90,21 @@ void Movement::updateMovement(float deltaTime, bool keys[4], sf::Vector2u window
 }
 
 void Movement::updateRotation(float deltaTime) {
-    // Calculate the shortest angle difference
+    // calculate the shortest angle difference
     float diff = angleDifference(targetDirection, direction);
     
-    // If the difference is small enough, snap to target
+    // if the difference is small enough, snap to target
     if (abs(diff) < rotationSpeed * deltaTime) {
         direction = targetDirection;
     } else {
-        // Rotate towards target direction
+        // rotate towards target direction
         if (diff > 0) {
             direction += rotationSpeed * deltaTime;
         } else {
             direction -= rotationSpeed * deltaTime;
         }
         
-        // Keep angle in 0-360 range
+        // keep angle in 0-360 range
         if (direction < 0) direction += 360.0f;
         if (direction >= 360.0f) direction -= 360.0f;
     }

@@ -10,7 +10,7 @@ public:
     void update(float deltaTime, bool keys[4], sf::Vector2u windowSize, 
                 const std::vector<Landmark>& landmarks = {});
     
-    // Getters
+    // getter methods for movement state
     sf::Vector2f getPosition() const { return position; }
     float getVelocity() const { return currentSpeed; }
     float getDirection() const { return direction; }
@@ -30,7 +30,7 @@ private:
     float deacceleration;
     float currentAcceleration;
     float currentSpeed;
-    float direction; // Current facing direction in degrees
-    float targetDirection; // Target direction to rotate towards
-    float rotationSpeed; // Rotation speed in degrees per second
+    float direction; // current facing direction in degrees
+    float targetDirection; // target direction to rotate towards
+    float rotationSpeed; // rotation speed in degrees per second
 };

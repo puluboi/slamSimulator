@@ -4,32 +4,32 @@
 #include <vector>
 #include <memory>
 
-// Landmark types for navigation
+// landmark types for navigation
 enum class LandmarkType {
-    POINT,      // Single point obstacle
-    LINE,       // Linear wall/barrier
-    CORNER,     // Corner/edge feature
-    CIRCLE,     // Circular obstacle
-    POLYGON     // Complex polygon shape
+    POINT,      // single point obstacle
+    LINE,       // linear wall/barrier
+    CORNER,     // corner/edge feature
+    CIRCLE,     // circular obstacle
+    POLYGON     // complex polygon shape
 };
 
-// Landmark structure for SLAM and navigation
+// landmark structure for slam and navigation
 struct Landmark {
-    sf::Vector2f position;              // Center position in odometry frame
-    LandmarkType type;                  // Type of landmark
-    float confidence;                   // Detection confidence (0-1)
-    sf::Vector2f size;                  // Size (width, height) for navigation
-    float orientation;                  // Orientation in degrees
-    std::vector<sf::Vector2f> shape;    // Detailed shape points for complex landmarks
-    int observationCount;               // Number of times observed
-    float lastSeenTime;                 // Last observation timestamp
-    sf::CircleShape visualMarker;       // For rendering
+    sf::Vector2f position;              // center position in odometry frame
+    LandmarkType type;                  // type of landmark
+    float confidence;                   // detection confidence (0-1)
+    sf::Vector2f size;                  // size (width, height) for navigation
+    float orientation;                  // orientation in degrees
+    std::vector<sf::Vector2f> shape;    // detailed shape points for complex landmarks
+    int observationCount;               // number of times observed
+    float lastSeenTime;                 // last observation timestamp
+    sf::CircleShape visualMarker;       // for rendering
     
-    // Additional fields for landmark creator
-    float clearanceRadius;              // Safe distance for navigation
-    bool isNavigable;                   // Whether robots can pass through/around
+    // additional fields for landmark creator
+    float clearanceRadius;              // safe distance for navigation
+    bool isNavigable;                   // whether robots can pass through/around
     
-    // Constructor
+    // constructor
     Landmark() : position(0, 0), type(LandmarkType::POINT), confidence(0.5f), 
                  size(10, 10), orientation(0), observationCount(1), lastSeenTime(0),
                  clearanceRadius(5.0f), isNavigable(true) {
@@ -42,32 +42,32 @@ class LandmarkDetector {
 public:
     LandmarkDetector();
     
-    // Simplified update function (no hit markers needed)
+    // simplified update function (no hit markers needed)
     void update(sf::Vector2f odometryPosition, float gameTime);
     
-    // Feature detection algorithms
+    // feature detection algorithms
     std::vector<Landmark> detectPointFeatures(const std::vector<sf::Vector2f>& points);
     std::vector<Landmark> detectLineFeatures(const std::vector<sf::Vector2f>& points);
     std::vector<Landmark> detectCornerFeatures(const std::vector<sf::Vector2f>& points);
     std::vector<Landmark> detectCircularFeatures(const std::vector<sf::Vector2f>& points);
     
-    // Shape analysis
+    // shape analysis functions
     void analyzeShapeProperties(Landmark& landmark, const std::vector<sf::Vector2f>& points);
     void updateNavigationProperties(Landmark& landmark);
     
-    // Utility functions
+    // utility functions for landmark detection
     std::vector<std::vector<sf::Vector2f>> clusterPoints(const std::vector<sf::Vector2f>& points);
     float calculateDistance(sf::Vector2f a, sf::Vector2f b);
     bool arePointsCollinear(const std::vector<sf::Vector2f>& points, float tolerance = 5.0f);
     sf::Vector2f calculateCentroid(const std::vector<sf::Vector2f>& points);
     
-    // Getters
+    // getter methods
     const std::vector<Landmark>& getLandmarks() const { return landmarks; }
     
 private:
     std::vector<Landmark> landmarks;
     
-    // Detection parameters
+    // detection parameters
     int minPointsForFeature;
     float maxClusterDistance;
     float minConfidence;

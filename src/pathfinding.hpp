@@ -34,22 +34,22 @@ class Pathfinding {
 public:
     Pathfinding(int worldWidth, int worldHeight, int gridSize = 20);
     
-    // Update occupancy grid with detected landmarks
+    // update occupancy grid with detected landmarks
     void updateOccupancyGrid(const std::vector<Landmark>& detectedLandmarks, sf::Vector2f agentPos);
     
-    // Find path using A* algorithm
+    // find path using a* algorithm
     std::vector<sf::Vector2f> findPath(sf::Vector2f start, sf::Vector2f goal);
     
-    // Find nearest unexplored cell for exploration
+    // find nearest unexplored cell for exploration
     sf::Vector2f findNearestUnexplored(sf::Vector2f agentPos);
     
-    // Get the occupancy grid for visualization
+    // get the occupancy grid for visualization
     const std::vector<std::vector<GridCell>>& getGrid() const { return grid; }
     
-    // Check if exploration is complete
+    // check if exploration is complete
     bool isExplorationComplete() const;
     
-    // Get grid size
+    // get grid size
     int getGridSize() const { return gridSize; }
     
 private:
@@ -57,7 +57,7 @@ private:
     int worldWidth, worldHeight, gridSize;
     int gridCols, gridRows;
     
-    // A* helper functions
+    // a* helper functions
     float calculateHeuristic(int x1, int y1, int x2, int y2);
     std::vector<sf::Vector2i> getNeighbors(int x, int y);
     bool isValidCell(int x, int y);

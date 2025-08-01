@@ -8,7 +8,7 @@ Pathfinding::Pathfinding(int worldWidth, int worldHeight, int gridSize)
     gridCols = worldWidth / gridSize;
     gridRows = worldHeight / gridSize;
     
-    // Initialize grid
+    // initialize grid
     grid.resize(gridRows);
     for (int y = 0; y < gridRows; y++) {
         grid[y].resize(gridCols);
@@ -22,9 +22,9 @@ Pathfinding::Pathfinding(int worldWidth, int worldHeight, int gridSize)
 }
 
 void Pathfinding::updateOccupancyGrid(const std::vector<Landmark>& detectedLandmarks, sf::Vector2f agentPos) {
-    // Mark agent's current area as explored
+    // mark agent's current area as explored
     sf::Vector2i agentGrid = worldToGrid(agentPos);
-    int exploreRadius = 3; // Explore 3 cells around agent
+    int exploreRadius = 3; // explore 3 cells around agent
     
     for (int dy = -exploreRadius; dy <= exploreRadius; dy++) {
         for (int dx = -exploreRadius; dx <= exploreRadius; dx++) {

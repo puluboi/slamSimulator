@@ -6,10 +6,10 @@
 Sensors::Sensors() 
     : rng(std::random_device{}()),
       noiseDistribution(0.0f, 0.f), 
-      LiDARnoiseDistribution(0.0f, 0.f), // LiDAR noise: ~1.5cm std dev
-      accelNoiseDistribution(0.0f, 1.5f), // Accelerometer noise: ~0.01 m/s² std dev
-      gyroNoiseDistribution(0.0f, 0.1f), // Gyroscope noise: ~0.0001 rad/s std dev
-      gpsNoiseDistribution(0.0f, 3.0f) // GPS noise: ~3m std dev (typical consumer GPS)
+      LiDARnoiseDistribution(0.0f, 0.1f), // lidar noise: ~1.5cm std dev
+      accelNoiseDistribution(0.0f, 0.f), // accelerometer noise: ~0.01 m/s² std dev
+      gyroNoiseDistribution(0.0f, 0.1f), // gyroscope noise: ~0.0001 rad/s std dev
+      gpsNoiseDistribution(0.0f, 3.0f) // gps noise: ~3m std dev (typical consumer gps)
 {
     lineTracers.resize(6); // 10 vertices for 5 lines
     lastGPSUpdateTime = 0.0f;
@@ -22,7 +22,7 @@ void Sensors::update(float deltaTime, sf::Vector2f position, sf::Vector2f previo
     collectSensorData(deltaTime, position, previousPosition, previousVelocity, 
                      direction, previousDirection, gameTime, currentAcceleration);
     
-    // Only update GPS if enabled
+    // only update gps if enabled
     if (gpsEnabled) {
         updateGPS(deltaTime, position, gameTime);
     }
@@ -31,23 +31,23 @@ void Sensors::update(float deltaTime, sf::Vector2f position, sf::Vector2f previo
 
 void Sensors::updateLineTracers(sf::Vector2f agentPosition, sf::Vector2f agentSize, 
                                float direction, float tracerLength, sf::Vector2u windowSize, sf::Vector2f position) {
-    // Calculate agent center
+    // calculate agent center
     sf::Vector2f agentCenter = agentPosition + sf::Vector2f(agentSize.x / 2, agentSize.y / 2);
     
-    // Reset error calculation for this frame
+    // reset error calculation for this frame
     float totalError = 0.0f;
     int errorCount = 0;
-    landmarkErrors.clear(); // Clear previous frame's errors
+    landmarkErrors.clear(); // clear previous frame's errors
     
-    // Create 10 lines spreading from -30 to +30 degrees from agent direction
+    // create 10 lines spreading from -30 to +30 degrees from agent direction
     for (int i = 0; i < 3; i++) {
         float angleOffset = -30.0f + (i * 30.f); // -30, -15, 0, 15, 30 degrees
         float totalAngle = direction + angleOffset;
         
-        // Convert to radians
+        // convert to radians
         float radians = totalAngle * 3.14159f / 180.0f;
         
-        // Calculate end point (no obstacles, so just extend to full range)
+        // calculate end point (no obstacles, so just extend to full range)
         sf::Vector2f endPoint;
         endPoint.x = agentCenter.x + cos(radians) * tracerLength;
         endPoint.y = agentCenter.y + sin(radians) * tracerLength;
@@ -179,9 +179,9 @@ void Sensors::calculateAcceleration(float deltaTime, sf::Vector2f position, sf::
     accelData.timestamp = gameTime;
     
     accelerometerData.push_back(accelData);
-    
-    // Keep only recent data (last 5 seconds)
-    while (!accelerometerData.empty() && accelerometerData.front().timestamp < gameTime - 5.0f) {
+    //std::cout << "accSize: "<< accelerometerData.size()<<std::endl;
+    // Keep the accelerometerData small
+    if(accelerometerData.size() > 10) {
         accelerometerData.erase(accelerometerData.begin());
     }
 }
