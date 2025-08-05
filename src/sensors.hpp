@@ -45,6 +45,7 @@ public:
     const std::vector<GyroscopeData>& getGyroscopeData() const { return gyroscopeData; }
     const std::vector<GPSData>& getGPSData() const { return gpsData; }
     const std::vector<Landmark>& getdetectedLandmarks() const { return detectedLandmarks; }
+    const std::vector<Landmark>& getCurrentlyVisibleLandmarks() const { return currentlyVisibleLandmarks; }
     sf::Vector2f getCurrentGPSPosition() const { 
         return gpsEnabled ? currentGPSPosition : sf::Vector2f(0, 0); 
     }
@@ -82,7 +83,8 @@ private:
     std::vector<GyroscopeData> gyroscopeData;
     std::vector<GPSData> gpsData;
     std::vector<sf::Vertex> lineTracers;
-    std::vector<Landmark> detectedLandmarks;
+    std::vector<Landmark> detectedLandmarks;  // accumulates all detected landmarks over time
+    std::vector<Landmark> currentlyVisibleLandmarks;  // only landmarks detected in current frame
     std::vector<Landmark> landmarks;
 
     // gps state variables

@@ -6,10 +6,10 @@
 Sensors::Sensors() 
     : rng(std::random_device{}()),
       noiseDistribution(0.0f, 0.f), 
-      LiDARnoiseDistribution(0.0f, 0.1f), // lidar noise: ~1.5cm std dev
-      accelNoiseDistribution(0.0f, 0.f), // accelerometer noise: ~0.01 m/s² std dev
-      gyroNoiseDistribution(0.0f, 0.0f), // gyroscope noise: ~0.0001 rad/s std dev
-      gpsNoiseDistribution(0.0f, 3.0f) // gps noise: ~3m std dev (typical consumer gps)
+      LiDARnoiseDistribution(0.0f, 0.1f), // lidar noise:
+      accelNoiseDistribution(0.0f, 1.f), // accelerometer noise:
+      gyroNoiseDistribution(0.0f, 0.1f), // gyroscope noise:
+      gpsNoiseDistribution(0.0f, 3.0f) 
 {
     lineTracers.resize(6); // 10 vertices for 5 lines
     lastGPSUpdateTime = 0.0f;
@@ -38,6 +38,9 @@ void Sensors::updateLineTracers(sf::Vector2f agentPosition, sf::Vector2f agentSi
     float totalError = 0.0f;
     int errorCount = 0;
     landmarkErrors.clear(); // clear previous frame's errors
+    
+    // clear currently visible landmarks - they get repopulated this frame
+    currentlyVisibleLandmarks.clear();
     
     // create 10 lines spreading from -30 to +30 degrees from agent direction
     for (int i = 0; i < 3; i++) {
@@ -140,6 +143,11 @@ void Sensors::updateLineTracers(sf::Vector2f agentPosition, sf::Vector2f agentSi
                 closestLandmark->setObservedPos(landmarkPosition);
                 detectedLandmarks.push_back(*closestLandmark);
             }
+            
+            // add to currently visible landmarks (gets cleared each frame)
+            Landmark currentlyVisible = *closestLandmark;
+            currentlyVisible.setObservedPos(landmarkPosition);
+            currentlyVisibleLandmarks.push_back(currentlyVisible);
         }
         
         // Set line tracer vertices

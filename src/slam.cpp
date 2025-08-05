@@ -32,12 +32,12 @@ void SLAM::initializeState(double x, double y, double theta) {
     // initialize covariance matrix for robot state uncertainty
     covariance = Eigen::MatrixXd::Identity(robotStateSize, robotStateSize);
     // set initial uncertainty values for pose estimation
-    covariance(0, 0) = 0.1; // x position uncertainty
-    covariance(1, 1) = 0.1; // y position uncertainty
-    covariance(2, 2) = 0.05; // orientation uncertainty in radians
-    covariance(3, 3) = 0.5; // x velocity uncertainty
-    covariance(4, 4) = 0.5; // y velocity uncertainty
-    covariance(5, 5) = 0.1; // angular velocity uncertainty
+    covariance(0, 0) = 0.01; // x position uncertainty
+    covariance(1, 1) = 0.01; // y position uncertainty
+    covariance(2, 2) = 0.005; // orientation uncertainty in radians
+    covariance(3, 3) = 0.1; // x velocity uncertainty
+    covariance(4, 4) = 0.1; // y velocity uncertainty
+    covariance(5, 5) = 0.05; // angular velocity uncertainty
     
     numLandmarks = 0;
     
@@ -70,9 +70,9 @@ void SLAM::addLandmarkToState(double x, double y) {
     Eigen::MatrixXd newCovariance = Eigen::MatrixXd::Zero(newStateSize, newStateSize);
     newCovariance.topLeftCorner(covariance.rows(), covariance.cols()) = covariance;
     
-    // set initial uncertainty for new landmark position
-    newCovariance(landmarkStartIndex, landmarkStartIndex) = 10.0;     // x uncertainty
-    newCovariance(landmarkStartIndex + 1, landmarkStartIndex + 1) = 10.0; // y uncertainty
+    // set initial uncertainty for new landmark position (much smaller to prevent filter corruption)
+    newCovariance(landmarkStartIndex, landmarkStartIndex) = 0.001;     // x uncertainty 
+    newCovariance(landmarkStartIndex + 1, landmarkStartIndex + 1) = 0.001; // y uncertainty
     
     covariance = newCovariance;
     numLandmarks++;
@@ -305,10 +305,10 @@ Eigen::VectorXd SLAM::stateTransitionModel(const Eigen::VectorXd& currentState,
         nextState(1) = y + vy * dt;  // position y  
         nextState(2) = theta + omega * dt;  // orientation
         
-        // Velocity updates from control input (accelerations for linear, velocity for angular)
+        // velocity updates from control input (accelerations for linear, angular velocity for rotational)
         nextState(3) = vx + controlInput(0) * dt;  // velocity x from acceleration
         nextState(4) = vy + controlInput(1) * dt;  // velocity y from acceleration
-        nextState(5) = controlInput(2);  // angular velocity directly (not integrated)
+        nextState(5) = controlInput(2);  // angular velocity directly matches current sensor reading
         
         // Normalize angle
         while (nextState(2) > M_PI) nextState(2) -= 2.0 * M_PI;
@@ -452,11 +452,11 @@ Eigen::MatrixXd SLAM::constructProcessNoiseMatrix(float deltaTime, float accelNo
     float dt3 = dt2 * dt;
     float dt4 = dt3 * dt;
     
-    // Reduce noise by orders of magnitude
-    float posNoise = 0.01f;      // 1cm position uncertainty
-    float velNoise = 0.1f;       // 10cm/s velocity uncertainty  
-    float angleNoise = 0.001f;   // ~0.06 degree uncertainty
-    float angVelNoise = 0.01f;   // 0.01 rad/s uncertainty
+    // balance process noise for trustworthy observations (10cm sensor noise)
+    float posNoise = 0.1f;      // 30cm position uncertainty - larger than sensor noise
+    float velNoise = 0.5f;      // 70cm/s velocity uncertainty - allow sensor corrections
+    float angleNoise = 0.001f;   // ~3 degree uncertainty - reasonable for odometry
+    float angVelNoise = 0.005f;   // 0.1 rad/s uncertainty - moderate angular velocity error
     
     // Position-velocity coupling for robot state (first 6 elements)
     // Position uncertainty from velocity
@@ -555,11 +555,10 @@ Eigen::VectorXd SLAM::calculateInnovation(const Eigen::VectorXd& actualObservati
     // Get predicted observation
     Eigen::VectorXd predictedObservation = predictObservation(landmarkIndex);
     
-    // Calculate innovation
+    // calculate innovation
     Eigen::VectorXd innovation = actualObservation - predictedObservation;
     
-    // Important: Normalize bearing innovation to [-π, π]
-    // This handles the circular nature of angles
+    // important: normalize bearing innovation to [-π, π] to handle angular discontinuity  
     while (innovation(1) > M_PI) innovation(1) -= 2.0 * M_PI;
     while (innovation(1) < -M_PI) innovation(1) += 2.0 * M_PI;
     
@@ -585,6 +584,25 @@ Eigen::MatrixXd SLAM::calculateKalmanGain(const Eigen::MatrixXd& observationJaco
     Eigen::MatrixXd PHt = covariance * observationJacobian.transpose();
     Eigen::MatrixXd S = observationJacobian * PHt + observationNoise; // Innovation covariance
     Eigen::MatrixXd K = PHt * S.inverse(); // Kalman gain
+    // debug output for kalman gain analysis
+    static int gainDebugCounter = 0;
+    if (++gainDebugCounter % 20 == 0) {  // print every 20th gain calculation
+        std::cout << "debug kalman gain - innovation covariance s determinant: " 
+                  << S.determinant() << std::endl;
+        std::cout << "debug kalman gain - gain matrix norm: " 
+                  << K.norm() << std::endl;
+        std::cout << "debug kalman gain - observation jacobian conditioning: " 
+                  << observationJacobian.norm() << std::endl;
+        
+        // check for numerical stability issues
+        if (S.determinant() < 1e-12) {
+            std::cout << "warning: innovation covariance matrix is nearly singular" << std::endl;
+        }
+        
+        if (K.norm() > 100.0) {
+            std::cout << "warning: kalman gain matrix has large norm, potential instability" << std::endl;
+        }
+    }
     return K;
 }
 void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
@@ -603,14 +621,17 @@ void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
     // Step 1: Calculate innovation
     Eigen::VectorXd innovation = calculateInnovation(observation, landmarkIndex);
     
-    // debug: print innovation values
-    std::cout << "DEBUG EKF Update - Landmark " << landmarkIndex 
-              << ": Innovation=[" << innovation(0) << ", " << innovation(1) 
-              << "] (range, bearing in rad)" << std::endl;
+    // debug: print innovation values (reduced output)
+    static int updateCounter = 0;
+    if (++updateCounter % 10 == 0) {  // print every 10th update
+        std::cout << "DEBUG EKF Update - Landmark " << landmarkIndex 
+                  << ": Innovation=[" << innovation(0) << ", " << innovation(1) 
+                  << "] (range, bearing in rad)" << std::endl;
+    }
     
     // innovation gating - reject observations with excessive errors to prevent filter corruption
-    double rangeInnovationThreshold = 190.5;  // 50cm range threshold
-    double bearingInnovationThreshold = 100.1; // ~5.7 degree bearing threshold
+    double rangeInnovationThreshold = 10;   // 50cm range threshold for outlier rejection
+    double bearingInnovationThreshold = 1; // ~5.7 degree bearing threshold for outlier rejection
     
     if (std::abs(innovation(0)) > rangeInnovationThreshold || 
         std::abs(innovation(1)) > bearingInnovationThreshold) {
@@ -620,25 +641,55 @@ void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
         return; // skip this update
     }
     
-    // Step 2: Calculate observation Jacobian
+    // step 2: calculate observation jacobian matrix for linearization of measurement model
     Eigen::MatrixXd H = calculateJacobian(JacobianType::OBSERVATION, state, Eigen::VectorXd(), landmarkIndex);
     
-    // Step 3: Construct observation noise matrix
+    // debug output: display observation jacobian for analysis (reduced output)
+    if (updateCounter % 50 == 0) {  // print every 50th update
+        std::cout << "debug ekf update - observation jacobian for landmark " << landmarkIndex 
+                  << " (size " << H.rows() << "x" << H.cols() << "):" << std::endl;
+        std::cout << H << std::endl;
+    }
+    
+    // Step 3: match observation noise to actual sensor accuracy (10cm lidar noise)
     Eigen::MatrixXd R = Eigen::MatrixXd::Identity(2, 2);
-    R(0, 0) = 0.1;   // range measurement noise variance (10cm std dev)
-    R(1, 1) = 0.01;  // bearing measurement noise variance (~5.7 degree std dev)
+    R(0, 0) = 0.01;  // 10cm range measurement noise variance (matches actual sensor)
+    R(1, 1) = 0.001; // ~1.8 degree bearing noise variance (reasonable for 10cm at typical ranges)
     
     // Step 4: Calculate Kalman gain
     Eigen::MatrixXd K = calculateKalmanGain(H, R);
     
-    // Step 5: Update state estimate
-    // X̂_(k|k) = X̂_(k|k-1) + K_k z̃_(k|k-1)
-    state = state + K * innovation;
+    // debug output: display kalman gain matrix for analysis of filter performance
+    if (updateCounter % 50 == 0) {  // print every 50th update
+        std::cout << "debug ekf update - kalman gain for landmark " << landmarkIndex 
+                  << " (size " << K.rows() << "x" << K.cols() << "):" << std::endl;
+        std::cout << K << std::endl;
+        
+        // diagnostic: check robot covariance conditioning
+        std::cout << "robot pose covariance diagonal: [" 
+                  << covariance(0,0) << ", " << covariance(1,1) << ", " << covariance(2,2) << "]" << std::endl;
+        std::cout << "robot-landmark cross-covariance sample: " 
+                  << covariance(0, robotStateSize + landmarkIndex*2) << std::endl;
+    }
     
-    // Step 6: Update covariance matrix
-    // P_(k|k) = (I - K_k H_k) P_(k|k-1)
+    // Step 5: Update state estimate
+   // debug output: display the state update vector for analysis of ekf correction
+    Eigen::VectorXd stateUpdate = K * innovation;
+    if (updateCounter % 50 == 0) {  // print every 50th update
+        std::cout << "debug ekf update - state correction (k*innovation) for landmark " << landmarkIndex 
+              << ":" << std::endl;
+    std::cout << stateUpdate.transpose() << std::endl;
+    }
+    
+    
+    
+    state = state + stateUpdate;
+    
+    // Step 6: Update covariance matrix using numerically stable Joseph form
+    // P_(k|k) = (I - K_k H_k) P_(k|k-1) (I - K_k H_k)^T + K_k R_k K_k^T
     Eigen::MatrixXd I = Eigen::MatrixXd::Identity(state.size(), state.size());
-    covariance = (I - K * H) * covariance;
+    Eigen::MatrixXd A = I - K * H;
+    covariance = A * covariance * A.transpose() + K * R * K.transpose();
     
     // Normalize robot orientation to [-π, π]
     if (state.size() >= 3) {
@@ -647,7 +698,14 @@ void SLAM::ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex) {
     }
 }
 
-void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations) {
+void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations, 
+                            const std::vector<int>& landmarkIds) {
+    // validate input sizes match
+    if (observations.size() != landmarkIds.size()) {
+        std::cerr << "observation count must match landmark id count" << std::endl;
+        return;
+    }
+    
     // validate input observations match expected range-bearing format
     for (const auto& obs : observations) {
         if (obs.size() != 2) {
@@ -657,11 +715,16 @@ void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations) {
         }
     }
     
-    // process observations sequentially to maintain filter stability
-    // limit updates to available landmarks to prevent index overflow
-    size_t maxUpdates = std::min(static_cast<size_t>(numLandmarks), observations.size());
-    
-    for (size_t i = 0; i < maxUpdates; i++) {
+    // process observations with correct landmark association
+    for (size_t i = 0; i < observations.size(); i++) {
+        int landmarkId = landmarkIds[i];
+        
+        // validate landmark id is within bounds
+        if (landmarkId < 0 || landmarkId >= numLandmarks) {
+            std::cerr << "invalid landmark id: " << landmarkId << std::endl;
+            continue;
+        }
+        
         // normalize bearing angle before update to ensure consistent angular representation
         Eigen::VectorXd normalizedObs = observations[i];
         double bearing = normalizedObs(1);
@@ -671,7 +734,7 @@ void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations) {
         while (bearing < -M_PI) bearing += 2.0 * M_PI;
         normalizedObs(1) = bearing;
         
-        // apply ekf update step for this landmark observation
-        ekfUpdate(normalizedObs, static_cast<int>(i));
+        // apply ekf update step for the correct landmarka
+        ekfUpdate(normalizedObs, landmarkId);  //  landmark association
     }
 }

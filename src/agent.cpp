@@ -28,8 +28,9 @@ void Agent::init(sf::Vector2f startPosition) {
 void Agent::updateState(float intervalTime){
     static size_t previousLandmarkCount = 0;
     const auto& detectedLandmarks = sensors.getdetectedLandmarks();
+    const auto& currentlyVisibleLandmarks = sensors.getCurrentlyVisibleLandmarks();
 
-    // check if new landmarks have been detected
+    // check if new landmarks have been detected (use full detected list for state expansion)
     if (detectedLandmarks.size() > previousLandmarkCount) {
         for (size_t i = previousLandmarkCount; i < detectedLandmarks.size(); ++i) {
             int landmarkId = detectedLandmarks[i].getId();
@@ -45,13 +46,13 @@ void Agent::updateState(float intervalTime){
     slam.updateControlInputWithAcceleration(sensors.getAccelerometerData(), sensors.getGyroscopeData());
     slam.ekfPredict(intervalTime);
     
-    // convert detected landmark cartesian coordinates to range-bearing observations
+    // convert currently visible landmark cartesian coordinates to range-bearing observations
     // use proper landmark id mapping for slam updates
     std::vector<std::pair<Eigen::VectorXd, int>> landmarkObservationPairs;
     sf::Vector2f robotPos = slam.getRobotPosition();
     float robotDir = slam.getRobotDirection() * M_PI / 180.0f; // convert degrees to radians
     
-    for (const auto& landmark : detectedLandmarks) {
+    for (const auto& landmark : currentlyVisibleLandmarks) {
         // calculate relative position from robot to landmark
         sf::Vector2f landmarkPos = landmark.getObservedPos();
         float dx = landmarkPos.x - robotPos.x;
@@ -86,11 +87,12 @@ void Agent::updateState(float intervalTime){
     
     // apply updates only for detected landmarks using their proper ids
     for (const auto& obsPair : landmarkObservationPairs) {
-        //slam.ekfUpdate(obsPair.first, obsPair.second);
+        slam.ekfUpdate(obsPair.first, obsPair.second);
     }
     
     // debug landmark observations
-    std::cout << "DEBUG: " << detectedLandmarks.size() << " landmarks detected, " 
+    std::cout << "DEBUG: " << detectedLandmarks.size() << " total landmarks, " 
+              << currentlyVisibleLandmarks.size() << " currently visible, "
               << landmarkObservationPairs.size() << " valid observations, " 
               << slam.getNumLandmarks() << " landmarks in slam state" << std::endl;
     
@@ -118,6 +120,27 @@ void Agent::updateState(float intervalTime){
     dirError = std::abs(dirError);
     
     std::cout<<"  ERRORS:   Pos=" << posError << " units, Dir=" << dirError << "°" << std::endl;
+    
+    // compare odometry and slam errors against ground truth
+    float slamPosError = std::sqrt(std::pow(movement.getPosition().x - slam.getRobotPosition().x, 2) + 
+                                  std::pow(movement.getPosition().y - slam.getRobotPosition().y, 2));
+    float slamDirError = std::abs(movement.getDirection() - slam.getRobotDirection());
+    while (slamDirError > 180.0f) slamDirError -= 360.0f;
+    while (slamDirError < -180.0f) slamDirError += 360.0f;
+    slamDirError = std::abs(slamDirError);
+    
+    float odometryPosError = std::sqrt(std::pow(movement.getPosition().x - odometry.getPosition().x, 2) + 
+                                      std::pow(movement.getPosition().y - odometry.getPosition().y, 2));
+    float odometryDirError = std::abs(movement.getDirection() - odometry.getDirection());
+    while (odometryDirError > 180.0f) odometryDirError -= 360.0f;
+    while (odometryDirError < -180.0f) odometryDirError += 360.0f;
+    odometryDirError = std::abs(odometryDirError);
+    
+    std::cout<<"  ERROR COMPARISON:" << std::endl;
+    std::cout<<"    odometry: pos=" << odometryPosError << " units, dir=" << odometryDirError << "°" << std::endl;
+    std::cout<<"    slam:     pos=" << slamPosError << " units, dir=" << slamDirError << "°" << std::endl;
+    std::cout<<"    slam improvement: pos=" << (odometryPosError - slamPosError) << " units, dir=" 
+             << (odometryDirError - slamDirError) << "°" << std::endl;
 }
 
 void Agent::update(float deltaTime, bool keys[4], sf::Vector2u windowSize, 

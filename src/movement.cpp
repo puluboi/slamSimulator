@@ -3,14 +3,14 @@
 
 
 Movement::Movement() {
-    speed = 20.0f;
-    acceleration =8.f;
-    deacceleration = 0.1f;
+    speed = 200.0f;
+    acceleration =80.f;
+    deacceleration = 10.f;
     currentSpeed = 0.0f;
     currentAcceleration = 0.0f;
     direction = 0.0f;        // facing right initially
     targetDirection = 0.0f;  // start with same target
-    rotationSpeed = 90.0f;   // 90 degrees per second
+    rotationSpeed = 900.0f;   // 90 degrees per second
 }
 
 void Movement::init(sf::Vector2f startPosition) {

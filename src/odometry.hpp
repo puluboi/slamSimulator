@@ -13,7 +13,7 @@ public:
                 float actualDirection, const std::vector<GyroscopeData>& gyroData,
                 const std::vector<AccelerometerData>& accelData);
     
-    // getter methods for odometry state
+    // Getters
     sf::Vector2f getPosition() const { return position; }
     float getDirection() const { return direction; }
     sf::Vector2f getVelocity() const { return velocity; }
@@ -23,14 +23,14 @@ private:
     float direction;
     sf::Vector2f velocity;
     float angVelocity;
-    sf::Vector2f acceleration;  // current acceleration estimate
+    sf::Vector2f acceleration;  // Current acceleration estimate
     
-    // integration state variables
+    // Integration state
     sf::Vector2f integratedVelocity;
     sf::Vector2f lastAccelReading;
     float lastUpdateTime;
     
-    // random number generation for wheel noise
+    // Random number generation for wheel noise
     mutable std::mt19937 rng;
     mutable std::normal_distribution<float> wheelNoiseDistribution;
     mutable std::normal_distribution<float> noiseDistribution;

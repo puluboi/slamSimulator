@@ -109,7 +109,9 @@ public:
 
     void ekfUpdate(const Eigen::VectorXd& observation, int landmarkIndex);
 
-    void ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations);
+    void ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations,
+                           const std::vector<int>& landmarkIds);
+
 
     // universal jacobian calculator using numerical differentiation
     template<typename Function>

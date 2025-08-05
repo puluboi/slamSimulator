@@ -5,7 +5,7 @@
 
 Odometry::Odometry() 
     : rng(std::random_device{}()),
-      noiseDistribution(0.0f, 0.2f)       // higher noise to see bigger ekf improvements
+      noiseDistribution(0.0f, 0.2f)       // Higher noise to see bigger EKF improvements
 {
     position = sf::Vector2f(0.0f, 0.0f);
     direction = 0.0f;
@@ -30,7 +30,7 @@ void Odometry::update(float deltaTime, sf::Vector2f actualPosition, sf::Vector2f
                      float actualDirection, const std::vector<GyroscopeData>& gyroData,
                      const std::vector<AccelerometerData>& accelData) {
     
-    if(!accelData.empty()){ // calculate positional odometry
+    if(!accelData.empty()){ // Calculate positional odometry
         auto& latestAccelReading = accelData.back();
         velocity += sf::Vector2f(latestAccelReading.x, latestAccelReading.y) * deltaTime;
         //std::cout<<std::fixed << std::setprecision(3)<<latestAccelReading.x<<": "<<latestAccelReading.y<< std::endl;
@@ -39,7 +39,7 @@ void Odometry::update(float deltaTime, sf::Vector2f actualPosition, sf::Vector2f
     if(!gyroData.empty()){
         auto& latestGyroReading = gyroData.back();
         direction += latestGyroReading.z * deltaTime*180/M_PI;
-        //std::cout<<std::fixed << std::setprecision(3)<<angVelocity<<std::endl;
+        std::cout<<std::fixed << std::setprecision(3)<<angVelocity<<std::endl;
         
     }
 }
