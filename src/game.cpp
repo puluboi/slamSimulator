@@ -72,6 +72,13 @@ void Game::handleEvents() {
                 // toggle exploration mode with spacebar
                 agent.toggleExplorationMode();
             }
+            if (event.key.code == sf::Keyboard::T) {
+                // toggle SLAM algorithm with T key
+                agent.toggleSLAMAlgorithm();
+                std::cout << "switched slam algorithm to: " 
+                          << (agent.getSLAMAlgorithm() == SLAMAlgorithm::EKF_SLAM ? "ekf-slam" : "ufastslam") 
+                          << std::endl;
+            }
         }
     }
     
@@ -112,6 +119,12 @@ void Game::render() {
     errorDisplay += "Frame Avg: " + std::to_string(frameAvgError) + " px\n";
     errorDisplay += "Total Avg: " + std::to_string(totalAvgError) + " px\n";
     errorDisplay += "Count: " + std::to_string(individualErrors.size()) + "\n";
+    
+    // add slam algorithm info
+    errorDisplay += "\nSLAM Algorithm: ";
+    errorDisplay += (agent.getSLAMAlgorithm() == SLAMAlgorithm::EKF_SLAM ? "EKF-SLAM" : "UFastSLAM");
+    errorDisplay += "\n(Press T to switch)\n";
+    
     if (!individualErrors.empty()) {
         errorDisplay += "Individual:\n";
         for (size_t i = 0; i < std::min(size_t(5), individualErrors.size()); ++i) {

@@ -3,7 +3,7 @@
 
 Agent::Agent() : pathfinder(Pathfinding(800, 600, 20)) { // initialize pathfinder with world size
     gameTime = 0.0f;
-    tracerLength = 150.0f;
+    tracerLength = 300.0f; // increase sensor range to re-observe distant landmarks
     previousPosition = sf::Vector2f(0.0f, 0.0f);
     previousVelocity = sf::Vector2f(0.0f, 0.0f);
     previousDirection = 0.0f;
@@ -11,6 +11,7 @@ Agent::Agent() : pathfinder(Pathfinding(800, 600, 20)) { // initialize pathfinde
     currentPathIndex = 0;
     currentTarget = sf::Vector2f(0.0f, 0.0f);
     pathUpdateTimer = 0.0f;
+    slam.setAlgorithm(SLAMAlgorithm::UFASTSLAM);
 }
 
 void Agent::init(sf::Vector2f startPosition) {
@@ -34,12 +35,18 @@ void Agent::updateState(float intervalTime){
     if (detectedLandmarks.size() > previousLandmarkCount) {
         for (size_t i = previousLandmarkCount; i < detectedLandmarks.size(); ++i) {
             int landmarkId = detectedLandmarks[i].getId();
-            int slamIndex = slam.getNumLandmarks(); // next available slam index
             
-            slam.addLandmarkToState(detectedLandmarks[i].getObservedPos());
-            landmarkIdToSlamIndex[landmarkId] = slamIndex; // store mapping
-            
-            std::cout << "mapped landmark id " << landmarkId << " to slam index " << slamIndex << std::endl;
+            if (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM) {
+                int slamIndex = slam.getNumLandmarks(); // next available slam index
+                slam.addLandmarkToState(detectedLandmarks[i].getObservedPos());
+                landmarkIdToSlamIndex[landmarkId] = slamIndex; // store mapping
+                
+                std::cout << "mapped landmark id " << landmarkId << " to slam index " << slamIndex << std::endl;
+            } else if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+                // for ufastslam, use a simple sequential mapping since landmarks are added dynamically
+                landmarkIdToSlamIndex[landmarkId] = landmarkId; // direct mapping for ufastslam
+                std::cout << "mapped landmark id " << landmarkId << " for ufastslam" << std::endl;
+            }
         }
         previousLandmarkCount = detectedLandmarks.size();
     }
@@ -77,7 +84,14 @@ void Agent::updateState(float intervalTime){
         auto it = landmarkIdToSlamIndex.find(landmarkId);
         if (it != landmarkIdToSlamIndex.end()) {
             int slamLandmarkIndex = it->second;
-            if (slamLandmarkIndex >= 0 && slamLandmarkIndex < slam.getNumLandmarks()) {
+            
+            // different validation for different algorithms
+            if (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM) {
+                if (slamLandmarkIndex >= 0 && slamLandmarkIndex < slam.getNumLandmarks()) {
+                    landmarkObservationPairs.push_back(std::make_pair(observation, slamLandmarkIndex));
+                }
+            } else if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+                // for ufastslam, landmarks are created dynamically, so just use the mapping
                 landmarkObservationPairs.push_back(std::make_pair(observation, slamLandmarkIndex));
             }
         } else {
@@ -85,9 +99,25 @@ void Agent::updateState(float intervalTime){
         }
     }
     
-    // apply updates only for detected landmarks using their proper ids
-    for (const auto& obsPair : landmarkObservationPairs) {
-        slam.ekfUpdate(obsPair.first, obsPair.second);
+    // apply updates for detected landmarks using their proper ids
+    if (!landmarkObservationPairs.empty()) {
+        if (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM) {
+            // ekf-slam: process observations individually
+            for (const auto& obsPair : landmarkObservationPairs) {
+                slam.ekfUpdate(obsPair.first, obsPair.second);
+            }
+        } else if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+            // ufastslam: process all observations together
+            std::vector<Eigen::VectorXd> observations;
+            std::vector<int> landmarkIds;
+            
+            for (const auto& obsPair : landmarkObservationPairs) {
+                observations.push_back(obsPair.first);
+                landmarkIds.push_back(obsPair.second);
+            }
+            
+            slam.ekfUpdateMultiple(observations, landmarkIds);
+        }
     }
     
     // debug landmark observations
@@ -96,13 +126,52 @@ void Agent::updateState(float intervalTime){
               << landmarkObservationPairs.size() << " valid observations, " 
               << slam.getNumLandmarks() << " landmarks in slam state" << std::endl;
     
-    std::cout<<"SLAM Predict diagnostics:" << std::endl;
-    std::cout<<"  GT: Pos[" << movement.getPosition().x << ", " << movement.getPosition().y 
-             << "] Dir=" << movement.getDirection() << "°" << std::endl;
-    std::cout<<"  ODOMETRY: Pos[" << odometry.getPosition().x << ", " << getOdometryPosition().y 
-             << "] Dir=" << odometry.getDirection() << "°" << std::endl;
-    std::cout<<"  SLAM:     Pos[" << slam.getRobotPosition().x << ", " << slam.getRobotPosition().y 
-             << "] Dir=" << slam.getRobotDirection() << "°" << std::endl;
+    // print algorithm-specific diagnostics
+    if (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM) {
+        std::cout<<"SLAM Predict diagnostics:" << std::endl;
+        std::cout<<"  GT: Pos[" << movement.getPosition().x << ", " << movement.getPosition().y 
+                 << "] Dir=" << movement.getDirection() << "°" << std::endl;
+        std::cout<<"  ODOMETRY: Pos[" << odometry.getPosition().x << ", " << getOdometryPosition().y 
+                 << "] Dir=" << odometry.getDirection() << "°" << std::endl;
+        std::cout<<"  SLAM:     Pos[" << slam.getRobotPosition().x << ", " << slam.getRobotPosition().y 
+                 << "] Dir=" << slam.getRobotDirection() << "°" << std::endl;
+    } else if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+        // ufastslam specific debugging
+        static int ufastDebugCounter = 0;
+        if (++ufastDebugCounter % 50 == 0) { // print every 50th update
+            std::cout << "=== ufastslam debug round " << ufastDebugCounter << " ===" << std::endl;
+            std::cout << "  GT: Pos[" << movement.getPosition().x << ", " << movement.getPosition().y 
+                     << "] Dir=" << movement.getDirection() << "°" << std::endl;
+            std::cout << "  ODOMETRY: Pos[" << odometry.getPosition().x << ", " << getOdometryPosition().y 
+                     << "] Dir=" << odometry.getDirection() << "°" << std::endl;
+            std::cout << "  UFASTSLAM: Pos[" << slam.getRobotPosition().x << ", " << slam.getRobotPosition().y 
+                     << "] Dir=" << slam.getRobotDirection() << "°" << std::endl;
+            
+            // detailed ufastslam analysis every 100th update
+            if (ufastDebugCounter % 100 == 0) {
+                slam.printUFastSLAMDetails();
+            }
+        }
+    }
+    
+    // add ufastslam specific debugging
+    if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+        static int ufastDebugCounter = 0;
+        if (++ufastDebugCounter % 200 == 0) { // less frequent debug output
+            std::cout << "=== ufastslam debug snapshot ===" << std::endl;
+            slam.printUFastSLAMDetails();
+        }
+        
+        // periodic landmark analysis
+        if (ufastDebugCounter % 500 == 0) {
+            slam.printUFastSLAMLandmarks();
+        }
+        
+        // convergence analysis
+        if (ufastDebugCounter % 1000 == 0) {
+            slam.printUFastSLAMConvergence();
+        }
+    }
     
     // print control inputs for debugging purposes
     if (!sensors.getAccelerometerData().empty() && !sensors.getGyroscopeData().empty()) {
@@ -141,6 +210,20 @@ void Agent::updateState(float intervalTime){
     std::cout<<"    slam:     pos=" << slamPosError << " units, dir=" << slamDirError << "°" << std::endl;
     std::cout<<"    slam improvement: pos=" << (odometryPosError - slamPosError) << " units, dir=" 
              << (odometryDirError - slamDirError) << "°" << std::endl;
+}
+
+void Agent::debugCurrentSLAM() const {
+    std::cout << "=== agent slam debug ===" << std::endl;
+    std::cout << "current slam algorithm: " 
+              << (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM ? "ekf-slam" : "ufastslam") << std::endl;
+    
+    slam.printState();
+    
+    if (slam.getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+        slam.printUFastSLAMDetails();
+    }
+    
+    std::cout << "========================" << std::endl;
 }
 
 void Agent::update(float deltaTime, bool keys[4], sf::Vector2u windowSize, 

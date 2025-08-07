@@ -18,6 +18,7 @@ add_executable(slamSimulator
     src/renderer.cpp
     src/pathfinding.cpp
     src/slam.cpp
+    src/ufastslam.cpp
     src/landmark_detector.cpp
     src/minimap_grid.cpp
     src/ekf.cpp

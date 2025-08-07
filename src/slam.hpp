@@ -1,7 +1,15 @@
 #pragma once
 #include <Eigen/Dense>
 #include <SFML/Graphics.hpp>
+#include <chrono>
 #include "sensors.hpp"  // include sensors for accelerometer and gyroscope data structures
+#include "ufastslam.hpp" // include ufastslam implementation
+
+// enumeration for slam algorithm types
+enum class SLAMAlgorithm {
+    EKF_SLAM,      // extended kalman filter slam
+    UFASTSLAM      // unscented fastslam with particle filter
+};
 
 // enumeration for different types of jacobian matrices
 enum class JacobianType {
@@ -11,9 +19,14 @@ enum class JacobianType {
 };
 
 // this class contains the fundamental building blocks of simultaneous localization and mapping
+// supports both ekf-slam and ufastslam algorithms with switchable implementation
 // primary role involves converting simulation data to a format suitable for slam algorithms
 class SLAM{
 private:
+    // algorithm selection
+    SLAMAlgorithm currentAlgorithm;
+    
+    // ekf-slam specific members
     Eigen::VectorXd observations;
     Eigen::VectorXd state;
     Eigen::MatrixXd covariance;
@@ -24,10 +37,24 @@ private:
     int numLandmarks = 0;
     // store last control input for jacobian calculations
     Eigen::Vector3d lastControlInput; // [ax, ay, alpha] - accelerations
+    
+    // ufastslam implementation
+    UFastSLAM ufastslam;
+    
+    // computational load tracking for algorithm performance analysis
+    mutable std::chrono::high_resolution_clock::time_point algorithmRoundStartTime;
+    mutable std::chrono::microseconds totalPredictTime{0};
+    mutable std::chrono::microseconds totalUpdateTime{0};
+    mutable int updateCount{0};
+    mutable bool roundTimingActive{false};
 
 public:
     // constructor and initialization methods
-    SLAM();
+    SLAM(SLAMAlgorithm algorithm = SLAMAlgorithm::EKF_SLAM);
+    
+    // algorithm switching
+    void setAlgorithm(SLAMAlgorithm algorithm);
+    SLAMAlgorithm getCurrentAlgorithm() const { return currentAlgorithm; }
     
     // initialize state vector with robot's initial pose estimate
     void initializeState(sf::Vector2f initialPosition, float initialDirection);
@@ -69,12 +96,18 @@ public:
     
     // state vector dimension information
     int getStateSize() const { return state.size(); }
-    int getNumLandmarks() const { return numLandmarks; }
+    int getNumLandmarks() const;
     int getRobotStateSize() const { return robotStateSize; }
     
     // utility functions for state management
     void printState() const;
     void reset();
+    
+    // ufastslam debugging methods
+    void printUFastSLAMDetails() const;
+    void printUFastSLAMLandmarks() const;
+    void printUFastSLAMConvergence() const;
+    void debugUFastSLAMParticle(int particleIndex = 0) const;
     
     // state transition model for motion prediction in extended kalman filter
     Eigen::VectorXd stateTransitionModel(const Eigen::VectorXd& currentState, 
@@ -112,6 +145,10 @@ public:
     void ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations,
                            const std::vector<int>& landmarkIds);
 
+    // computational load tracking methods for performance analysis
+    void startAlgorithmRound() const;
+    void endAlgorithmRound() const;
+    void printComputationalLoad(const std::chrono::microseconds& totalRoundTime) const;
 
     // universal jacobian calculator using numerical differentiation
     template<typename Function>

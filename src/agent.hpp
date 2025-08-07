@@ -27,6 +27,18 @@ public:
     void toggleExplorationMode() { explorationMode = !explorationMode; }
     bool isExplorationMode() const { return explorationMode; }
     void setExplorationMode(bool enabled) { explorationMode = enabled; }
+    
+    // slam algorithm control methods
+    void setSLAMAlgorithm(SLAMAlgorithm algorithm) { slam.setAlgorithm(algorithm); }
+    SLAMAlgorithm getSLAMAlgorithm() const { return slam.getCurrentAlgorithm(); }
+    void toggleSLAMAlgorithm() { 
+        if (slam.getCurrentAlgorithm() == SLAMAlgorithm::EKF_SLAM) {
+            slam.setAlgorithm(SLAMAlgorithm::UFASTSLAM);
+        } else {
+            slam.setAlgorithm(SLAMAlgorithm::EKF_SLAM);
+        }
+    }
+    void debugCurrentSLAM() const;
                     
     void setLandmarks(const std::vector<Landmark>& newLandmarks) {
         sensors.setLandmarks(newLandmarks);
