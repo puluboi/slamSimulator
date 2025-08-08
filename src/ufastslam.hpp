@@ -87,9 +87,10 @@ private:
         const std::vector<Eigen::VectorXd>& sigmaPoints,
         const std::vector<double>& weights) const;
     
-    // particle filter operations
+    // particle filter operations following proper ufastslam algorithm
     void predictParticles(const Eigen::Vector3d& controlInput, float deltaTime);
     void updateParticleWeights(const std::vector<std::pair<Eigen::VectorXd, int>>& observations);
+    // note: landmark updates are now integrated into updateParticleWeights following ufastslam algorithm
     void resampleParticles();
     double calculateEffectiveSampleSize() const;
     

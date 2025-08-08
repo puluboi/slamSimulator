@@ -31,6 +31,7 @@ private:
     // ui elements for error display
     sf::Font font;
     sf::Text errorText;
+    sf::Text performanceText; // new text element for performance metrics
     
     // input handling
     bool keys[4]; // W, A, S, D

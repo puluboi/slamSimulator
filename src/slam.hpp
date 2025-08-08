@@ -149,6 +149,7 @@ public:
     void startAlgorithmRound() const;
     void endAlgorithmRound() const;
     void printComputationalLoad(const std::chrono::microseconds& totalRoundTime) const;
+    double getAverageUpdateTime() const; // get average update time in microseconds
 
     // universal jacobian calculator using numerical differentiation
     template<typename Function>

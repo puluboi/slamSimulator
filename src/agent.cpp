@@ -326,3 +326,22 @@ void Agent::renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosition
                            sensors.getGPSData(), sensors.isGPSEnabled(), landmarks,
                            currentPath, currentTarget, currentPathIndex, explorationMode);
 }
+
+float Agent::getSLAMPositionError() const {
+    // calculate position error between true position and slam estimate
+    sf::Vector2f truePos = movement.getPosition();
+    sf::Vector2f slamPos = slam.getRobotPosition();
+    return std::sqrt(std::pow(truePos.x - slamPos.x, 2) + std::pow(truePos.y - slamPos.y, 2));
+}
+
+float Agent::getOdometryPositionError() const {
+    // calculate position error between true position and odometry estimate
+    sf::Vector2f truePos = movement.getPosition();
+    sf::Vector2f odoPos = odometry.getPosition();
+    return std::sqrt(std::pow(truePos.x - odoPos.x, 2) + std::pow(truePos.y - odoPos.y, 2));
+}
+
+double Agent::getSLAMUpdateTime() const {
+    // return average slam update time in microseconds
+    return slam.getAverageUpdateTime();
+}

@@ -63,6 +63,11 @@ public:
     // get average error across all detected landmarks
     float getAverageDetectedLandmarkError() const { return sensors.calculateAverageDetectedLandmarkError(); }
     
+    // performance metrics for display
+    float getSLAMPositionError() const;
+    float getOdometryPositionError() const;
+    double getSLAMUpdateTime() const;
+    
     // gps control methods
     void setGPSEnabled(bool enabled) { sensors.setGPSEnabled(enabled); }
     bool isGPSEnabled() const { return sensors.isGPSEnabled(); }

@@ -864,3 +864,14 @@ void SLAM::ekfUpdateMultiple(const std::vector<Eigen::VectorXd>& observations,
         ufastslam.update(observationPairs);
     }
 }
+
+double SLAM::getAverageUpdateTime() const {
+    if (currentAlgorithm == SLAMAlgorithm::UFASTSLAM) {
+        // delegate to ufastslam implementation
+        if (updateCount > 0) {
+            return static_cast<double>(totalUpdateTime.count()) / updateCount;
+        }
+    }
+    // for ekf-slam, return 0 for now (could be implemented if needed)
+    return 0.0;
+}

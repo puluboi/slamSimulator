@@ -28,6 +28,12 @@ void Game::init(){
     errorText.setFillColor(sf::Color::Black);
     errorText.setPosition(10.0f, 10.0f); // Top-left corner
     
+    // initialize performance metrics text
+    performanceText.setFont(font);
+    performanceText.setCharacterSize(14);
+    performanceText.setFillColor(sf::Color::Blue);
+    performanceText.setPosition(10.0f, 200.0f); // Below error text
+    
     // walls around
     createWall(0.f,0.f, 0.f, 600.f);
     createWall(800.f,0.f, 800.f, 600.f);
@@ -148,6 +154,34 @@ void Game::render() {
     
     window.draw(textBackground);
     window.draw(errorText);
+    
+    // create and render performance metrics text
+    std::string performanceDisplay = "=== PERFORMANCE METRICS ===\n";
+    performanceDisplay += "SLAM Update Time: " + std::to_string(agent.getSLAMUpdateTime()) + " μs\n";
+    performanceDisplay += "SLAM Position Error: " + std::to_string(agent.getSLAMPositionError()) + " units\n";
+    performanceDisplay += "Odometry Position Error: " + std::to_string(agent.getOdometryPositionError()) + " units\n";
+    
+    float slamError = agent.getSLAMPositionError();
+    float odoError = agent.getOdometryPositionError();
+    float improvement = odoError - slamError;
+    
+    performanceDisplay += "SLAM Improvement: " + std::to_string(improvement) + " units\n";
+    performanceDisplay += "SLAM LSE: " + std::to_string(slamError * slamError) + "\n";
+    performanceDisplay += "Odometry LSE: " + std::to_string(odoError * odoError) + "\n";
+    
+    performanceText.setString(performanceDisplay);
+    
+    // draw performance text with background
+    sf::RectangleShape perfTextBackground;
+    sf::FloatRect perfTextBounds = performanceText.getLocalBounds();
+    perfTextBackground.setSize(sf::Vector2f(perfTextBounds.width + 10, perfTextBounds.height + 10));
+    perfTextBackground.setPosition(performanceText.getPosition().x - 5, performanceText.getPosition().y - 5);
+    perfTextBackground.setFillColor(sf::Color(240, 240, 255, 200)); // Light blue background
+    perfTextBackground.setOutlineColor(sf::Color::Blue);
+    perfTextBackground.setOutlineThickness(1.0f);
+    
+    window.draw(perfTextBackground);
+    window.draw(performanceText);
     
     // render minimap on the right side
     sf::Vector2f minimapSize(150.0f, 150.0f); // 150x150 pixel minimap

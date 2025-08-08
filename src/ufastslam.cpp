@@ -8,14 +8,14 @@
 UFastSLAM::UFastSLAM(int numParticles) 
     : numParticles(numParticles), 
       randomGenerator(std::chrono::steady_clock::now().time_since_epoch().count()),
-      normalDist(0.0, 1.0),        // gaussian noise generator: mean=0, std=3.0 for general random sampling
-      motionNoiseStd(0.25),         // motion model noise level: controls particle spread during prediction
+      normalDist(0.0, 1.0),        // gaussian noise generator: mean=0, std=1.0 for general random sampling
+      motionNoiseStd(0.3),         // reduced motion model noise level: controls particle spread during prediction
                                    // lower values = tighter tracking but less robustness to model errors
                                    // higher values = more particle diversity but potentially more drift
-      measurementNoiseStd(0.5),   // observation model noise level: affects likelihood calculation
+      measurementNoiseStd(0.1),   // minimal observation model noise for maximum trust in observations
                                    // lower values = observations trusted more, particles converge faster
                                    // higher values = observations trusted less, more robust to sensor noise
-      resamplingThreshold(0.4) {   // fraction of particles triggering resampling (0.1 = 10% of total particles)
+      resamplingThreshold(0.4) {   // fraction of particles triggering resampling (0.4 = 40% of total particles)
                                    // lower values = more frequent resampling, faster convergence, risk of particle depletion
                                    // higher values = less frequent resampling, maintains diversity, slower convergence
     
@@ -36,8 +36,8 @@ void UFastSLAM::initializeParticles(sf::Vector2f initialPosition, float initialD
 }
 
 void UFastSLAM::initializeParticles(double x, double y, double theta) {
-    // initialize all particles around the starting pose with moderate random variations
-    double poseNoise = 5.0; // initial particle spread in position (units): controls initial uncertainty
+    // initialize all particles around the starting pose with smaller random variations for better convergence
+    double poseNoise = 1.0; // reduced initial particle spread in position (units): controls initial uncertainty
                             // smaller values = particles start closer together, assumes accurate initial position
                             // larger values = wider initial spread, more robust to initial position errors
     
@@ -45,7 +45,7 @@ void UFastSLAM::initializeParticles(double x, double y, double theta) {
         // add small gaussian noise to initial pose for particle diversity
         particle.pose(0) = x + normalDist(randomGenerator) * poseNoise;
         particle.pose(1) = y + normalDist(randomGenerator) * poseNoise;
-        particle.pose(2) = theta + normalDist(randomGenerator) * (poseNoise * 0.003);
+        particle.pose(2) = theta + normalDist(randomGenerator) * (poseNoise * 0.01); // smaller angular spread
         
         // normalize angle
         while (particle.pose(2) > M_PI) particle.pose(2) -= 2.0 * M_PI;
@@ -219,14 +219,13 @@ void UFastSLAM::predictParticles(const Eigen::Vector3d& controlInput, float delt
 }
 
 void UFastSLAM::updateParticleWeights(const std::vector<std::pair<Eigen::VectorXd, int>>& observations) {
-    // debug output for weight update
+    // implement proper ufastslam algorithm with integrated ukf landmark updates
     static int weightDebugCounter = 0;
     bool debugOutput = (++weightDebugCounter % 50 == 0);
     
     if (debugOutput) {
         std::cout << "ufastslam weight update debug - processing " << observations.size() 
-                  << " observations" << std::endl;
-        std::cout << "  measurement noise std: " << measurementNoiseStd << std::endl;
+                  << " observations using proper ukf-integrated approach" << std::endl;
     }
     
     double totalLikelihood = 0.0;
@@ -247,7 +246,7 @@ void UFastSLAM::updateParticleWeights(const std::vector<std::pair<Eigen::VectorX
                           << " with observation: [" << observation.transpose() << "]" << std::endl;
             }
             
-            // ensure landmark exists in particle's map and update position
+            // ensure landmark exists in particle's map 
             if (landmarkIndex >= static_cast<int>(particle.landmarks.size())) {
                 // initialize new landmark with observed position
                 Eigen::Vector2d landmarkPos;
@@ -264,68 +263,73 @@ void UFastSLAM::updateParticleWeights(const std::vector<std::pair<Eigen::VectorX
                 }
                 
                 if (debugOutput && p == 0) {
-                    std::cout << "    added new landmark at: [" << landmarkPos.transpose() << "]" << std::endl;
-                }
-            } else {
-                // update existing landmark position with current observation to fix drift
-                double range = observation(0);
-                double bearing = observation(1);
-                
-                Eigen::Vector2d newLandmarkPos;
-                newLandmarkPos(0) = particle.pose(0) + range * std::cos(bearing + particle.pose(2));
-                newLandmarkPos(1) = particle.pose(1) + range * std::sin(bearing + particle.pose(2));
-                
-                // blend with existing position using exponential moving average
-                // landmark_new = 0.5 * landmark_old + 0.5 * observation_based_position
-                // 0.5 weight = balanced trust between existing position and new observation
-                // allows faster correction of drift while maintaining some stability
-                particle.landmarks[landmarkIndex].mean = 0.5 * particle.landmarks[landmarkIndex].mean + 0.5 * newLandmarkPos;
-                
-                if (debugOutput && p == 0) {
-                    std::cout << "    updated landmark " << landmarkIndex << " from [" 
-                              << particle.landmarks[landmarkIndex].mean.transpose() << "] to blended position" << std::endl;
+                    std::cout << "    added new landmark " << landmarkIndex << " at: [" << landmarkPos.transpose() 
+                              << "] from obs: [" << range << ", " << bearing << "] robot: [" 
+                              << particle.pose(0) << ", " << particle.pose(1) << ", " << particle.pose(2) << "]" << std::endl;
                 }
             }
             
-            // calculate expected observation for this landmark
-            Eigen::Vector2d expectedObs = observationModel(particle.pose, 
-                                                         particle.landmarks[landmarkIndex].mean);
+            // proper ufastslam approach: use ukf for landmark update and weight calculation
+            // this follows the theoretical framework from the unscented particle filter paper
+            LandmarkEstimate& landmark = particle.landmarks[landmarkIndex];
             
-            // calculate innovation (observation residual)
-            Eigen::Vector2d innovation = observation.head<2>() - expectedObs;
+            // perform ukf landmark update to get innovation covariance
+            updateLandmarkEstimate(particle, landmarkIndex, observation.head<2>());
             
-            // normalize bearing innovation
+            // calculate expected observation using ukf prediction
+            std::vector<Eigen::VectorXd> sigmaPoints = generateSigmaPoints(landmark.mean, landmark.covariance);
+            std::vector<Eigen::VectorXd> transformedPoints;
+            
+            for (const auto& point : sigmaPoints) {
+                Eigen::Vector2d obsPoint = observationModel(particle.pose, point);
+                transformedPoints.push_back(obsPoint);
+            }
+            
+            // calculate ukf weights for unscented transform
+            int n = 2; // landmark dimension
+            double lambda = utParams.alpha * utParams.alpha * (n + utParams.kappa) - n;
+            std::vector<double> weights(2 * n + 1);
+            weights[0] = lambda / (n + lambda);
+            for (int i = 1; i < 2 * n + 1; i++) {
+                weights[i] = 0.5 / (n + lambda);
+            }
+            
+            // calculate predicted observation and innovation covariance using ukf
+            auto [predObs, innovCov] = unscentedTransform(transformedPoints, weights);
+            
+            // add measurement noise according to theoretical framework
+            Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
+            R(0,0) = measurementNoiseStd * measurementNoiseStd;  // proper measurement noise variance
+            R(1,1) = measurementNoiseStd * measurementNoiseStd;  // consistent with theoretical model
+            innovCov += R;
+            
+            // calculate innovation for weight update
+            Eigen::Vector2d innovation = observation.head<2>() - predObs;
+            
+            // normalize bearing innovation to [-pi, pi]
             while (innovation(1) > M_PI) innovation(1) -= 2.0 * M_PI;
             while (innovation(1) < -M_PI) innovation(1) += 2.0 * M_PI;
             
-            if (debugOutput && p == 0) {
-                std::cout << "    expected obs: [" << expectedObs.transpose() << "]" << std::endl;
-                std::cout << "    innovation: [" << innovation.transpose() << "]" << std::endl;
-            }
-            
-            // calculate likelihood using reasonable measurement noise model
-            Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
-            R(0,0) = 1.0;  // range measurement noise variance (units²): 1.0 = 1.0 std deviation
-                            // controls how strictly range observations are trusted
-                            // reasonable values for typical range sensors
-            R(1,1) = 0.01;   // bearing measurement noise variance (rad²): 0.01 ≈ 0.1 rad std deviation  
-                            // controls how strictly bearing observations are trusted
-                            // reasonable values for typical bearing sensors
-            
-            // gaussian likelihood
-            double det = R.determinant();
-            if (det > 1e-12) {  // avoid numerical issues
-                double mahalanobisDistSq = innovation.transpose() * R.inverse() * innovation;
+            // calculate particle importance weight using proper ukf innovation covariance
+            double det = innovCov.determinant();
+            if (det > 1e-12) {
+                double mahalanobisDistSq = innovation.transpose() * innovCov.inverse() * innovation;
                 double exponent = -0.5 * mahalanobisDistSq;
-                // add a small constant to prevent complete rejection
-                double obsLikelihood = std::exp(exponent) + 1e-8;
+                
+                // theoretical multivariate gaussian likelihood without artificial clamping
+                double normalizationFactor = 1.0 / (2.0 * M_PI * std::sqrt(det));
+                double obsLikelihood = normalizationFactor * std::exp(exponent);
                 likelihood *= obsLikelihood;
                 
                 if (debugOutput && p == 0) {
+                    std::cout << "    simplified update completed" << std::endl;
+                    std::cout << "    innovation: [" << innovation.transpose() << "]" << std::endl;
                     std::cout << "    observation likelihood: " << obsLikelihood << std::endl;
-                    std::cout << "    innovation mahalanobis distance: " 
-                              << std::sqrt(mahalanobisDistSq) << std::endl;
-                    std::cout << "    exponent: " << exponent << std::endl;
+                    std::cout << "    mahalanobis distance: " << std::sqrt(mahalanobisDistSq) << std::endl;
+                }
+            } else {
+                if (debugOutput && p == 0) {
+                    std::cout << "    warning: singular observation covariance matrix" << std::endl;
                 }
             }
         }
@@ -481,13 +485,15 @@ void UFastSLAM::resampleParticles() {
     particles = std::move(newParticles);
     
     // add noise after resampling to prevent particle collapse
-    double resampleNoise = 0.5; // post-resampling noise injection magnitude (units)
-                                 // prevents all particles from converging to identical poses after resampling
-                                 // balances between maintaining diversity and preserving convergence
+    // adaptive noise based on current particle spread - less noise when converged
+    double currentSpread = getParticleSpread();
+    double baseResampleNoise = 0.1; // reduced base noise for better convergence
+    double adaptiveNoise = std::min(0.3, baseResampleNoise * (1.0 + currentSpread)); // scale with spread
+    
     for (auto& particle : particles) {
-        particle.pose(0) += normalDist(randomGenerator) * resampleNoise;        // x-position jitter
-        particle.pose(1) += normalDist(randomGenerator) * resampleNoise;        // y-position jitter  
-        particle.pose(2) += normalDist(randomGenerator) * (resampleNoise * 0.1); // orientation jitter (10% of position noise)
+        particle.pose(0) += normalDist(randomGenerator) * adaptiveNoise;        // x-position jitter
+        particle.pose(1) += normalDist(randomGenerator) * adaptiveNoise;        // y-position jitter  
+        particle.pose(2) += normalDist(randomGenerator) * (adaptiveNoise * 0.05); // very small orientation jitter
         
         // normalize angle
         while (particle.pose(2) > M_PI) particle.pose(2) -= 2.0 * M_PI;
@@ -573,10 +579,10 @@ void UFastSLAM::updateLandmarkEstimate(Particle& particle, int landmarkIndex,
     // calculate predicted observation and innovation covariance
     auto [predObs, innovCov] = unscentedTransform(transformedPoints, weights);
     
-    // add measurement noise
+    // add measurement noise consistent with theoretical framework
     Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
-    R(0,0) = measurementNoiseStd * measurementNoiseStd;
-    R(1,1) = (measurementNoiseStd * 0.1) * (measurementNoiseStd * 0.1);
+    R(0,0) = measurementNoiseStd * measurementNoiseStd;  // consistent measurement noise variance
+    R(1,1) = measurementNoiseStd * measurementNoiseStd;  // following theoretical model
     innovCov += R;
     
     // calculate cross-covariance
@@ -685,7 +691,7 @@ void UFastSLAM::update(const std::vector<std::pair<Eigen::VectorXd, int>>& obser
         }
     }
     
-    // update particle weights based on observations
+    // update particle weights based on observations using proper ufastslam with ukf landmark updates
     updateParticleWeights(observations);
     
     // check if resampling is needed
