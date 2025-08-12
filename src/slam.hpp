@@ -56,6 +56,9 @@ public:
     void setAlgorithm(SLAMAlgorithm algorithm);
     SLAMAlgorithm getCurrentAlgorithm() const { return currentAlgorithm; }
     
+    // access to specific algorithm implementations for advanced features
+    const UFastSLAM& getUFastSLAM() const { return ufastslam; }
+    
     // initialize state vector with robot's initial pose estimate
     void initializeState(sf::Vector2f initialPosition, float initialDirection);
     void initializeState(double x, double y, double theta);

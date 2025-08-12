@@ -324,7 +324,8 @@ void Agent::renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosition
                            slam.getRobotPosition(), sensors.getCurrentGPSPosition(),
                            movement.getDirection(), slam.getRobotDirection(), 
                            sensors.getGPSData(), sensors.isGPSEnabled(), landmarks,
-                           currentPath, currentTarget, currentPathIndex, explorationMode);
+                           currentPath, currentTarget, currentPathIndex, explorationMode,
+                           &slam);  // Pass SLAM pointer for particle access
 }
 
 float Agent::getSLAMPositionError() const {

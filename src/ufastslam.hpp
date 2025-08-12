@@ -62,6 +62,7 @@ private:
     double motionNoiseStd;                         // motion model noise standard deviation
     double measurementNoiseStd;                    // measurement model noise standard deviation
     double resamplingThreshold;                    // effective sample size threshold for resampling
+    double jitterScale;                            // particle regularization noise scale for resampling
     
     // computational performance tracking
     mutable std::chrono::high_resolution_clock::time_point algorithmStartTime;
@@ -126,6 +127,9 @@ public:
     int getNumParticles() const { return numParticles; }
     int getNumLandmarks() const;
     double getParticleSpread() const;
+    
+    // particle access for visualization (returns const reference to prevent modification)
+    const std::vector<Particle>& getParticles() const { return particles; }
     
     // computational performance analysis
     void startAlgorithmRound() const;

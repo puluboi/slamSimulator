@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 #include "sensors.hpp"
+#include "slam.hpp"  // Include for SLAMAlgorithm enum and UFastSLAM access
 
 class Renderer {
 public:
@@ -18,5 +19,6 @@ public:
                             const std::vector<sf::Vector2f>& currentPath,
                             sf::Vector2f currentTarget,
                             size_t currentPathIndex,
-                            bool explorationMode);
+                            bool explorationMode,
+                            const SLAM* slam = nullptr);  // Add SLAM pointer for particle access
 };

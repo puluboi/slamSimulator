@@ -9,15 +9,19 @@ UFastSLAM::UFastSLAM(int numParticles)
     : numParticles(numParticles), 
       randomGenerator(std::chrono::steady_clock::now().time_since_epoch().count()),
       normalDist(0.0, 1.0),        // gaussian noise generator: mean=0, std=1.0 for general random sampling
-      motionNoiseStd(0.3),         // reduced motion model noise level: controls particle spread during prediction
+      motionNoiseStd(4),         // reduced motion model noise level: controls particle spread during prediction
                                    // lower values = tighter tracking but less robustness to model errors
                                    // higher values = more particle diversity but potentially more drift
-      measurementNoiseStd(0.1),   // minimal observation model noise for maximum trust in observations
+      measurementNoiseStd(0.001),   // extremely small observation model noise for zero lidar noise scenario
                                    // lower values = observations trusted more, particles converge faster
                                    // higher values = observations trusted less, more robust to sensor noise
-      resamplingThreshold(0.4) {   // fraction of particles triggering resampling (0.4 = 40% of total particles)
+      resamplingThreshold(0.3),   // fraction of particles triggering resampling (0.4 = 40% of total particles)
                                    // lower values = more frequent resampling, faster convergence, risk of particle depletion
                                    // higher values = less frequent resampling, maintains diversity, slower convergence
+      jitterScale(0.8) {          // particle regularization noise for resampling diversity maintenance
+                                   // prevents particle degeneracy by adding small noise to copied particles
+                                   // lower values = less noise, faster convergence, risk of sample impoverishment
+                                   // higher values = more noise, maintains diversity, slower convergence
     
     particles.resize(numParticles);
     
@@ -459,6 +463,13 @@ void UFastSLAM::resampleParticles() {
         // copy selected particle
         newParticles.push_back(particles[j]);
         newParticles.back().weight = 1.0 / numParticles; // reset weight
+        
+        // add small jitter to copied particles to maintain diversity (particle regularization)
+        // this prevents particle degeneracy and maintains filter effectiveness
+        newParticles.back().pose(0) += normalDist(randomGenerator) * jitterScale;
+        newParticles.back().pose(1) += normalDist(randomGenerator) * jitterScale;
+        newParticles.back().pose(2) += normalDist(randomGenerator) * jitterScale * 0.01; // smaller angular jitter
+        
         resampleCounts[j]++;
     }
     
@@ -471,6 +482,7 @@ void UFastSLAM::resampleParticles() {
         std::cout << "  resampling statistics:" << std::endl;
         std::cout << "    unique survivors: " << numUniqueSurvivors << "/" << numParticles << std::endl;
         std::cout << "    max resamples of single particle: " << maxResamples << std::endl;
+        std::cout << "    jitter scale applied: " << jitterScale << std::endl;
         
         // show which particles survived most
         std::cout << "    particles with >1 copy: ";
@@ -725,7 +737,49 @@ void UFastSLAM::update(const std::vector<std::pair<Eigen::VectorXd, int>>& obser
 }
 
 Eigen::Vector3d UFastSLAM::getRobotPose() const {
-    // calculate weighted average of particle poses using proper circular statistics
+    // option 1: use best particle pose (consistent with landmark selection)
+    auto bestParticle = std::max_element(particles.begin(), particles.end(),
+        [](const Particle& a, const Particle& b) {
+            return a.weight < b.weight;
+        });
+    
+    if (bestParticle != particles.end()) {
+        // debug: occasionally show best particle vs weighted average comparison
+        static int poseDebugCounter = 0;
+        bool showDebug = (++poseDebugCounter % 100 == 0);
+        
+        if (showDebug) {
+            std::cout << "pose estimation debug:" << std::endl;
+            std::cout << "  best particle pose: [" << bestParticle->pose.transpose() << "]" << std::endl;
+            std::cout << "  best particle weight: " << bestParticle->weight << std::endl;
+            
+            // calculate weighted average for comparison
+            Eigen::Vector3d weightedPose = Eigen::Vector3d::Zero();
+            double totalWeight = 0.0;
+            double weightedSinTheta = 0.0, weightedCosTheta = 0.0;
+            
+            for (const auto& particle : particles) {
+                weightedPose(0) += particle.weight * particle.pose(0);
+                weightedPose(1) += particle.weight * particle.pose(1);
+                weightedSinTheta += particle.weight * std::sin(particle.pose(2));
+                weightedCosTheta += particle.weight * std::cos(particle.pose(2));
+                totalWeight += particle.weight;
+            }
+            
+            if (totalWeight > 1e-15) {
+                weightedPose(0) /= totalWeight;
+                weightedPose(1) /= totalWeight;
+                weightedPose(2) = std::atan2(weightedSinTheta / totalWeight, weightedCosTheta / totalWeight);
+            }
+            
+            std::cout << "  weighted average pose: [" << weightedPose.transpose() << "]" << std::endl;
+            std::cout << "  pose difference: [" << (bestParticle->pose - weightedPose).transpose() << "]" << std::endl;
+        }
+        
+        return bestParticle->pose;
+    }
+    
+    // fallback: calculate weighted average of particle poses using proper circular statistics
     // for angular components to handle wraparound at ±π boundary correctly
     Eigen::Vector3d weightedPose = Eigen::Vector3d::Zero();
     double totalWeight = 0.0;

@@ -1,6 +1,8 @@
 #include "renderer.hpp"
 #include <cmath>
 #include <set>
+#include <algorithm>  // for std::sort
+#include <iostream>   // for potential debugging
 
 void Renderer::renderAgent(sf::RenderWindow& window, const sf::RectangleShape& shape,
                           const std::vector<sf::Vertex>& lineTracers) {
@@ -24,7 +26,8 @@ void Renderer::renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosit
                             const std::vector<sf::Vector2f>& currentPath,
                             sf::Vector2f currentTarget,
                             size_t currentPathIndex,
-                            bool explorationMode) {
+                            bool explorationMode,
+                            const SLAM* slam) {
     // Draw minimap background
     sf::RectangleShape minimapBackground;
     minimapBackground.setPosition(minimapPosition);
@@ -175,6 +178,60 @@ void Renderer::renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosit
                 };
                 window.draw(gpsTrail, 2, sf::Lines);
             }
+        }
+    }
+    
+    // Draw top 10 particles when in uFastSLAM mode
+    if (slam && slam->getCurrentAlgorithm() == SLAMAlgorithm::UFASTSLAM) {
+        const auto& ufastslam = slam->getUFastSLAM();
+        const auto& particles = ufastslam.getParticles();
+        
+        // Get particles sorted by weight
+        std::vector<std::pair<double, int>> particleWeights;
+        for (int i = 0; i < particles.size(); i++) {
+            particleWeights.push_back({particles[i].weight, i});
+        }
+        
+        // Sort by weight (highest first)
+        std::sort(particleWeights.begin(), particleWeights.end(), 
+                  std::greater<std::pair<double, int>>());
+        
+        // Draw top 10 particles
+        int numParticlesToDraw = std::min(10, static_cast<int>(particleWeights.size()));
+        
+        for (int i = 0; i < numParticlesToDraw; i++) {
+            int particleIndex = particleWeights[i].second;
+            const auto& particle = particles[particleIndex];
+            
+            // Convert world coordinates to minimap coordinates
+            sf::Vector2f particleMinimapPos = minimapPosition + sf::Vector2f(
+                particle.pose(0) * scaleX,
+                particle.pose(1) * scaleY
+            );
+            
+            // Set transparency based on rank (best particle is most opaque)
+            sf::Uint8 alpha = static_cast<sf::Uint8>(150 - (i * 10)); // Fade from 150 to 60
+            
+            // Draw particle position as small yellow circle
+            sf::CircleShape particleShape(1.5f);
+            particleShape.setFillColor(sf::Color(255, 255, 0, alpha));
+            particleShape.setOrigin(1.5f, 1.5f);
+            particleShape.setPosition(particleMinimapPos);
+            window.draw(particleShape);
+            
+            // Draw particle orientation as small yellow line
+            float arrowLength = 6.0f;
+            float radians = particle.pose(2);
+            sf::Vector2f arrowEnd = particleMinimapPos + sf::Vector2f(
+                cos(radians) * arrowLength,
+                sin(radians) * arrowLength
+            );
+            
+            sf::Vertex directionLine[] = {
+                sf::Vertex(particleMinimapPos, sf::Color(255, 255, 0, alpha)),
+                sf::Vertex(arrowEnd, sf::Color(255, 255, 0, alpha))
+            };
+            window.draw(directionLine, 2, sf::Lines);
         }
     }
     
