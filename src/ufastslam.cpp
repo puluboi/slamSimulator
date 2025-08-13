@@ -323,13 +323,13 @@ void UFastSLAM::updateParticleWeights(const std::vector<std::pair<Eigen::VectorX
                 // theoretical multivariate gaussian likelihood without artificial clamping
                 double normalizationFactor = 1.0 / (2.0 * M_PI * std::sqrt(det));
                 double obsLikelihood = normalizationFactor * std::exp(exponent);
-                likelihood *= obsLikelihood;
-                
-                if (debugOutput && p == 0) {
-                    std::cout << "    simplified update completed" << std::endl;
+                likelihood = obsLikelihood;
+                if ( p == 0) {
+                    std::cout << "    innovation covariance: "<<std::scientific<<innovCov << std::endl;
                     std::cout << "    innovation: [" << innovation.transpose() << "]" << std::endl;
-                    std::cout << "    observation likelihood: " << obsLikelihood << std::endl;
-                    std::cout << "    mahalanobis distance: " << std::sqrt(mahalanobisDistSq) << std::endl;
+                    std::cout << "    normalization factor: 1 /"<<2.0 * M_PI * std::sqrt(det) << " = "<< normalizationFactor << std::endl;
+                    std::cout << "    mahalanobis distance: " << mahalanobisDistSq << std::endl;
+                    std::cout << "    obsLikelihood "<< normalizationFactor<< " * "<< std::exp(exponent)<< " = "<<obsLikelihood<<std::endl;
                 }
             } else {
                 if (debugOutput && p == 0) {
@@ -518,51 +518,7 @@ void UFastSLAM::resampleParticles() {
     }
 }
 
-int UFastSLAM::associateLandmark(const Particle& particle, const Eigen::Vector2d& observation) const {
-    // simple nearest neighbor data association
-    // in practice, more sophisticated association methods would be used
-    
-    if (particle.landmarks.empty()) {
-        return -1; // no landmarks to associate with
-    }
-    
-    double minDistance = std::numeric_limits<double>::max();
-    int bestMatch = -1;
-    
-    for (size_t i = 0; i < particle.landmarks.size(); i++) {
-        // calculate expected observation for this landmark
-        Eigen::Vector2d expectedObs = observationModel(particle.pose, 
-                                                     particle.landmarks[i].mean);
-        
-        // calculate mahalanobis distance
-        Eigen::Vector2d innovation = observation - expectedObs;
-        while (innovation(1) > M_PI) innovation(1) -= 2.0 * M_PI;
-        while (innovation(1) < -M_PI) innovation(1) += 2.0 * M_PI;
-        
-        double distance = mahalanobisDistance(innovation, particle.landmarks[i].covariance);
-        
-        if (distance < minDistance) {
-            minDistance = distance;
-            bestMatch = static_cast<int>(i);
-        }
-    }
-    
-    // use validation gate for association
-    double gateThreshold = 9.21; // chi-square 95% confidence threshold for 2 degrees of freedom
-                                  // statistical test for data association: 9.21 corresponds to 95% confidence
-                                  // lower values = stricter association, fewer false matches, risk of missing correct associations
-                                  // higher values = looser association, more false matches, better recall
-    if (minDistance < gateThreshold) {
-        return bestMatch;
-    }
-    
-    return -1; // no valid association found
-}
 
-double UFastSLAM::mahalanobisDistance(const Eigen::Vector2d& innovation, 
-                                     const Eigen::Matrix2d& covariance) const {
-    return innovation.transpose() * covariance.inverse() * innovation;
-}
 
 void UFastSLAM::updateLandmarkEstimate(Particle& particle, int landmarkIndex, 
                                       const Eigen::Vector2d& observation) {
@@ -1008,10 +964,19 @@ void UFastSLAM::printDetailedParticleInfo(int particleIndex) const {
     std::cout << "particle " << particleIndex << " detailed info:" << std::endl;
     std::cout << "  pose: [" << particle.pose(0) << ", " << particle.pose(1) 
               << ", " << particle.pose(2) << "] rad" << std::endl;
-    std::cout << "  velocity: [" << particle.velocity(0) << ", " << particle.velocity(1) 
-              << ", " << particle.velocity(2) << "] units/s" << std::endl;
     std::cout << "  weight: " << particle.weight << std::endl;
     std::cout << "  landmarks: " << particle.landmarks.size() << std::endl;
+    
+    // show landmark covariance matrices and observation counts
+    for (size_t i = 0; i < std::min(size_t(5), particle.landmarks.size()); i++) {
+        const LandmarkEstimate& lm = particle.landmarks[i];
+        std::cout << "    landmark " << i << ":" << std::endl;
+        std::cout << "      position: [" << lm.mean(0) << ", " << lm.mean(1) << "]" << std::endl;
+        std::cout << "      covariance: [[" << lm.covariance(0,0) << ", " << lm.covariance(0,1) 
+                  << "], [" << lm.covariance(1,0) << ", " << lm.covariance(1,1) << "]]" << std::endl;
+        std::cout << "      uncertainty (trace): " << lm.covariance.trace() << std::endl;
+        std::cout << "      observations: " << lm.observationCount << std::endl;
+    }
     
     // show first few landmarks with uncertainty
     for (size_t i = 0; i < std::min(size_t(3), particle.landmarks.size()); i++) {

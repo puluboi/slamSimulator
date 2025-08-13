@@ -216,7 +216,7 @@ void Renderer::renderMinimap(sf::RenderWindow& window, sf::Vector2f minimapPosit
             sf::CircleShape particleShape(1.5f);
             particleShape.setFillColor(sf::Color(255, 255, 0, alpha));
             particleShape.setOrigin(1.5f, 1.5f);
-            particleShape.setPosition(particleMinimapPos);
+            particleShape.setPosition(particleMinimapPos+sf::Vector2f(0.75f, 0.75f));
             window.draw(particleShape);
             
             // Draw particle orientation as small yellow line

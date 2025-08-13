@@ -13,11 +13,11 @@ struct LandmarkEstimate {
     int observationCount;           // number of times this landmark has been observed
     
     LandmarkEstimate() : mean(Eigen::Vector2d::Zero()), 
-                        covariance(Eigen::Matrix2d::Identity() * 1000.0), 
+                        covariance(Eigen::Matrix2d::Identity()*5000), 
                         observationCount(0) {}
     
     LandmarkEstimate(const Eigen::Vector2d& pos) : mean(pos), 
-                                                  covariance(Eigen::Matrix2d::Identity() * 0.1),
+                                                  covariance(Eigen::Matrix2d::Identity() * 2500),
                                                   observationCount(1) {}
 };
 
@@ -46,7 +46,7 @@ struct UnscentedParams {
                         // additional tuning parameter for sigma point placement
                         // kappa = 0 is common choice, kappa = 3-n ensures positive semi-definite covariance
     
-    UnscentedParams() : alpha(0.001), beta(2.0), kappa(0.0) {}  // conservative default values for stability
+    UnscentedParams() : alpha(0.01), beta(2.0), kappa(0.0) {}  // conservative default values for stability
 };
 
 // ufastslam implementation using particle filter with unscented transform
